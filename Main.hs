@@ -13,41 +13,47 @@ import Control.Concurrent.STM.TBQueue
 
 import Criterion.Main
 
--- 	$(GHC) -O2 chanbench.hs -o chanbench-$$i; done
---  for i in 0 1 2; do echo; echo === test $$i ===; 
---      for j in CHAN TCHAN TQUEUE TBQUEUE; do 
-    --      printf "%-10s" $$j; 
-    --      time ./chanbench-$$j $$i 2000000; 
-    --done; done
+-- These tests initially taken from stm/bench/chanbench.hs, ported to
+-- criterion, with some additions.
+--
+-- The original used CPP to avoid code duplication while also ensuring GHC
+-- optimized the code in a realistic fashion. Here we just copy paste.
 
 main = do 
-  let n = 2000000
+  let n = 100000
+--let n = 2000000  -- original suggested value, bugs if exceeded
   defaultMain $
         [ bgroup "Chan" $
-              [ bench "async writes/reads" $ runtestChan0 n
+              -- original tests from chanbench.hs
+              [ bench "async 1 writer 1 reader" $ runtestChan0 n
               , bench "sequential write all then read all" $ runtestChan1 n
               , bench "repeated write some, read some" $ runtestChan2 n
+              -- new benchmarks
+              , bench "async 2 writers two readers" $ runtestChanAsync 2 2 n
+              , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
               ]
         , bgroup "TChan" $
-              [ bench "async writes/reads" $ runtestTChan0 n
+              [ bench "async 1 writer 1 reader" $ runtestTChan0 n
               , bench "sequential write all then read all" $ runtestTChan1 n
               , bench "repeated write some, read some" $ runtestTChan2 n
+              , bench "async 2 writers two readers" $ runtestTChanAsync 2 2 n
+              , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
               ]
         , bgroup "TQueue" $
-              [ bench "async writes/reads" $ runtestTQueue0 n
+              [ bench "async 1 writer 1 reader" $ runtestTQueue0 n
               , bench "sequential write all then read all" $ runtestTQueue1 n
               , bench "repeated write some, read some" $ runtestTQueue2 n
+              , bench "async 2 writers two readers" $ runtestTQueueAsync 2 2 n
+              , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
               ]
         , bgroup "TBQueue" $
-              [ bench "async writes/reads" $ runtestTBQueue0 n
+              [ bench "async 1 writer 1 reader" $ runtestTBQueue0 n
               , bench "sequential write all then read all" $ runtestTBQueue1 n
               , bench "repeated write some, read some" $ runtestTBQueue2 n
+              , bench "async 2 writers two readers" $ runtestTBQueueAsync 2 2 n
+              , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
               ]
         ]
-
-   -- TODO:
-   --    async 2 writers, two readers
-   --    async 3 writers, one reader
 
 
 
@@ -72,6 +78,16 @@ runtestChan2 n = do
     replicateM_ n1000 $ writeChan c (1 :: Int)
     replicateM_ n1000 $ readChan c
 
+
+runtestChanAsync :: Int -> Int -> Int -> IO ()
+runtestChanAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  c <- newChan
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ writeChan c (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ readChan c
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
+
 -- ----------
 
 runtestTChan0, runtestTChan1, runtestTChan2 :: Int -> IO ()
@@ -91,6 +107,15 @@ runtestTChan2 n = do
   replicateM_ 1000 $ do
     replicateM_ n1000 $ atomically $ writeTChan c (1 :: Int)
     replicateM_ n1000 $ atomically $ readTChan c
+
+runtestTChanAsync :: Int -> Int -> Int -> IO ()
+runtestTChanAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  c <- newTChanIO
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTChan c (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTChan c
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
 
 -- ----------
 
@@ -112,6 +137,15 @@ runtestTQueue2 n = do
     replicateM_ n1000 $ atomically $ writeTQueue c (1 :: Int)
     replicateM_ n1000 $ atomically $ readTQueue c
 
+runtestTQueueAsync :: Int -> Int -> Int -> IO ()
+runtestTQueueAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  c <- newTQueueIO
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTQueue c (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTQueue c
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
+
 -- ----------
 
 runtestTBQueue0, runtestTBQueue1, runtestTBQueue2 :: Int -> IO ()
@@ -122,7 +156,7 @@ runtestTBQueue0 n = do
   waitBoth a b
   return ()
 runtestTBQueue1 n = do
-  c <- newTBQueueIO 4096
+  c <- newTBQueueIO n -- The original benchmark must have blocked indefinitely here, no?
   replicateM_ n $ atomically $ writeTBQueue c (1 :: Int)
   replicateM_ n $ atomically $ readTBQueue c
 runtestTBQueue2 n = do
@@ -132,3 +166,12 @@ runtestTBQueue2 n = do
     replicateM_ n1000 $ atomically $ writeTBQueue c (1 :: Int)
     replicateM_ n1000 $ atomically $ readTBQueue c
 
+
+runtestTBQueueAsync :: Int -> Int -> Int -> IO ()
+runtestTBQueueAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  c <- newTBQueueIO 4096
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTBQueue c (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTBQueue c
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
