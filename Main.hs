@@ -11,6 +11,8 @@ import Control.Concurrent.STM
 import Control.Concurrent.STM.TQueue
 import Control.Concurrent.STM.TBQueue
 
+import Control.Concurrent.MVar
+import Data.IORef
 import Criterion.Main
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
@@ -22,36 +24,49 @@ import Criterion.Main
 main = do 
   let n = 100000
 --let n = 2000000  -- original suggested value, bugs if exceeded
+  mv <- newEmptyMVar
+  tmv <- newEmptyTMVarIO 
+  tv <- newTVarIO undefined 
+  ior <- newIORef undefined
   defaultMain $
-        [ bgroup "Chan" $
-              -- original tests from chanbench.hs
-              [ bench "async 1 writer 1 reader" $ runtestChan0 n
-              , bench "sequential write all then read all" $ runtestChan1 n
-              , bench "repeated write some, read some" $ runtestChan2 n
-              -- new benchmarks
-              , bench "async 2 writers two readers" $ runtestChanAsync 2 2 n
-              , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
-              ]
-        , bgroup "TChan" $
-              [ bench "async 1 writer 1 reader" $ runtestTChan0 n
-              , bench "sequential write all then read all" $ runtestTChan1 n
-              , bench "repeated write some, read some" $ runtestTChan2 n
-              , bench "async 2 writers two readers" $ runtestTChanAsync 2 2 n
-              , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
-              ]
-        , bgroup "TQueue" $
-              [ bench "async 1 writer 1 reader" $ runtestTQueue0 n
-              , bench "sequential write all then read all" $ runtestTQueue1 n
-              , bench "repeated write some, read some" $ runtestTQueue2 n
-              , bench "async 2 writers two readers" $ runtestTQueueAsync 2 2 n
-              , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
-              ]
-        , bgroup "TBQueue" $
-              [ bench "async 1 writer 1 reader" $ runtestTBQueue0 n
-              , bench "sequential write all then read all" $ runtestTBQueue1 n
-              , bench "repeated write some, read some" $ runtestTBQueue2 n
-              , bench "async 2 writers two readers" $ runtestTBQueueAsync 2 2 n
-              , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
+        [ bgroup "Channel implementations" $
+            [ bgroup "Chan" $
+                  -- original tests from chanbench.hs
+                  [ bench "async 1 writer 1 reader" $ runtestChan0 n
+                  , bench "sequential write all then read all" $ runtestChan1 n
+                  , bench "repeated write some, read some" $ runtestChan2 n
+                  -- new benchmarks
+                  , bench "async 2 writers two readers" $ runtestChanAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
+                  ]
+            , bgroup "TChan" $
+                  [ bench "async 1 writer 1 reader" $ runtestTChan0 n
+                  , bench "sequential write all then read all" $ runtestTChan1 n
+                  , bench "repeated write some, read some" $ runtestTChan2 n
+                  , bench "async 2 writers two readers" $ runtestTChanAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
+                  ]
+            , bgroup "TQueue" $
+                  [ bench "async 1 writer 1 reader" $ runtestTQueue0 n
+                  , bench "sequential write all then read all" $ runtestTQueue1 n
+                  , bench "repeated write some, read some" $ runtestTQueue2 n
+                  , bench "async 2 writers two readers" $ runtestTQueueAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
+                  ]
+            , bgroup "TBQueue" $
+                  [ bench "async 1 writer 1 reader" $ runtestTBQueue0 n
+                  , bench "sequential write all then read all" $ runtestTBQueue1 n
+                  , bench "repeated write some, read some" $ runtestTBQueue2 n
+                  , bench "async 2 writers two readers" $ runtestTBQueueAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
+                  ]
+            ]
+        , bgroup "Var primitives" $
+              [ bench "writeIORef, readIORef" $ (writeIORef ior '1' >> readIORef ior)
+              , bench "atomicModifyIORef" $ (atomicModifyIORef ior $ const ('2','2')) -- fair comparison?
+              , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
+              , bench "atomically: putTMVar, takeTMVar" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+              , bench "atomically: writeTVar, readTVar" $ (atomically $ (writeTVar tv '1' >> readTVar tv))
               ]
         ]
 
