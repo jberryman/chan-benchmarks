@@ -1,5 +1,6 @@
 Criterion benchmarks for the different haskell concurrent channel
-implementations in `base` and `stm`.
+implementations in `base` and `stm`, as well as simple var read/write
+benchmarks for `MVar`, `IORef`, and `TVar`.
 
 These benchmarks were originally taken from bench/chanbench.hs in the `stm`
 package, ported to criterion with some additions. To run them on your machine:
