@@ -23,6 +23,8 @@ executable chan-benchmarks
                      , stm
                      , async
                      , criterion
+                     , chan-split-fast
+                     , primitive
 
   -- we can also add -with-rtsopts=-N if desired
   ghc-options: -O2 -threaded -rtsopts 

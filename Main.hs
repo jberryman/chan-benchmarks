@@ -15,6 +15,9 @@ import Control.Concurrent.MVar
 import Data.IORef
 import Criterion.Main
 
+import qualified Control.Concurrent.Chan.Split as S
+import Data.Primitive.MutVar
+
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions.
 --
@@ -28,6 +31,7 @@ main = do
   tmv <- newEmptyTMVarIO 
   tv <- newTVarIO undefined 
   ior <- newIORef undefined
+  mutv <- newMutVar undefined
   defaultMain $
         [ bgroup "Channel implementations" $
             [ bgroup "Chan" $
@@ -60,13 +64,29 @@ main = do
                   , bench "async 2 writers two readers" $ runtestTBQueueAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
                   ]
+            -- OTHER CHAN IMPLEMENTATIONS:
+            , bgroup "chan-split-fast" $
+                  -- original tests from chanbench.hs
+                  [ bench "async 1 writer 1 reader" $ runtestSplitChan0 n
+                  , bench "sequential write all then read all" $ runtestSplitChan1 n
+                  , bench "repeated write some, read some" $ runtestSplitChan2 n
+                  -- new benchmarks
+                  , bench "async 2 writers two readers" $ runtestSplitChanAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestSplitChanAsync 3 1 n
+                  ]
             ]
         , bgroup "Var primitives" $
               [ bench "writeIORef, readIORef" $ (writeIORef ior '1' >> readIORef ior)
               , bench "atomicModifyIORef" $ (atomicModifyIORef ior $ const ('2','2')) -- fair comparison?
+
               , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
+
               , bench "atomically: putTMVar, takeTMVar" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+
               , bench "atomically: writeTVar, readTVar" $ (atomically $ (writeTVar tv '1' >> readTVar tv))
+
+              , bench "writeMutVar, readMutVar" $ ((writeMutVar mutv '1' :: IO ()) >> readMutVar mutv)
+              , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char) -- fair comparison?
               ]
         ]
 
@@ -190,3 +210,37 @@ runtestTBQueueAsync writers readers n = do
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTBQueue c
   mapM_ wait rcvrs
   mapM_ wait senders -- for exceptions, I guess?
+
+
+-- OTHER CHAN IMPLEMENTATIONS:
+
+runtestSplitChan0, runtestSplitChan1, runtestSplitChan2 :: Int -> IO ()
+runtestSplitChan0 n = do
+  (i,o) <- S.newSplitChan
+  a <- async $ replicateM_ n $ S.writeChan i (1 :: Int)
+  b <- async $ replicateM_ n $ S.readChan o
+  waitBoth a b
+  return ()
+
+runtestSplitChan1 n = do
+  (i,o) <- S.newSplitChan
+  replicateM_ n $ S.writeChan i (1 :: Int)
+  replicateM_ n $ S.readChan o
+
+runtestSplitChan2 n = do
+  (i,o) <- S.newSplitChan
+  let n1000 = n `quot` 1000
+  replicateM_ 1000 $ do
+    replicateM_ n1000 $ S.writeChan i (1 :: Int)
+    replicateM_ n1000 $ S.readChan o
+
+
+runtestSplitChanAsync :: Int -> Int -> Int -> IO ()
+runtestSplitChanAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  (i,o) <- S.newSplitChan
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ S.writeChan i (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ S.readChan o
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
+
