@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PackageImports #-}
 module Main
     where 
 
@@ -15,7 +16,8 @@ import Control.Concurrent.MVar
 import Data.IORef
 import Criterion.Main
 
-import qualified Control.Concurrent.Chan.Split as S
+import qualified "chan-split-fast" Control.Concurrent.Chan.Split as S
+import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
@@ -66,13 +68,20 @@ main = do
                   ]
             -- OTHER CHAN IMPLEMENTATIONS:
             , bgroup "chan-split-fast" $
-                  -- original tests from chanbench.hs
                   [ bench "async 1 writer 1 reader" $ runtestSplitChan0 n
                   , bench "sequential write all then read all" $ runtestSplitChan1 n
                   , bench "repeated write some, read some" $ runtestSplitChan2 n
-                  -- new benchmarks
                   , bench "async 2 writers two readers" $ runtestSplitChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestSplitChanAsync 3 1 n
+            , bgroup "split-channel" $
+                  -- original tests from chanbench.hs
+                  [ bench "async 1 writer 1 reader" $ runtestSplitChannel0 n
+                  , bench "sequential write all then read all" $ runtestSplitChannel1 n
+                  , bench "repeated write some, read some" $ runtestSplitChannel2 n
+                  -- new benchmarks
+                  , bench "async 2 writers two readers" $ runtestSplitChannelAsync 2 2 n
+                  , bench "async 3 writers 1 reader" $ runtestSplitChannelAsync 3 1 n
+                  ]
                   ]
             ]
         , bgroup "Var primitives" $
@@ -214,6 +223,8 @@ runtestTBQueueAsync writers readers n = do
 
 -- OTHER CHAN IMPLEMENTATIONS:
 
+-- chan-split-fast
+
 runtestSplitChan0, runtestSplitChan1, runtestSplitChan2 :: Int -> IO ()
 runtestSplitChan0 n = do
   (i,o) <- S.newSplitChan
@@ -241,6 +252,40 @@ runtestSplitChanAsync writers readers n = do
   (i,o) <- S.newSplitChan
   senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ S.writeChan i (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ S.readChan o
+  mapM_ wait rcvrs
+  mapM_ wait senders -- for exceptions, I guess?
+
+
+
+-- split-channel
+
+runtestSplitChannel0, runtestSplitChannel1, runtestSplitChannel2 :: Int -> IO ()
+runtestSplitChannel0 n = do
+  (i,o) <- SC.new
+  a <- async $ replicateM_ n $ SC.send i (1 :: Int)
+  b <- async $ replicateM_ n $ SC.receive o
+  waitBoth a b
+  return ()
+
+runtestSplitChannel1 n = do
+  (i,o) <- SC.new
+  replicateM_ n $ SC.send i (1 :: Int)
+  replicateM_ n $ SC.receive o
+
+runtestSplitChannel2 n = do
+  (i,o) <- SC.new
+  let n1000 = n `quot` 1000
+  replicateM_ 1000 $ do
+    replicateM_ n1000 $ SC.send i (1 :: Int)
+    replicateM_ n1000 $ SC.receive o
+
+
+runtestSplitChannelAsync :: Int -> Int -> Int -> IO ()
+runtestSplitChannelAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  (i,o) <- SC.new
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ SC.send i (1 :: Int)
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ SC.receive o
   mapM_ wait rcvrs
   mapM_ wait senders -- for exceptions, I guess?
 

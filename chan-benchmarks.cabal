@@ -23,10 +23,23 @@ executable chan-benchmarks
                      , stm
                      , async
                      , criterion
-                     , chan-split-fast
                      , primitive
+            -- other chans:
+                     , chan-split-fast
+                     -- provides more capabilities than `chan-split-fast`:
+                     , split-channel
+              --TODO (other FIFO chans/queues with blocking read):
+                   --, cml
+              --TODO (lock-free queues, maybe just the write-all-read-all test for now):
+                   --, chaselev-deque
+                   --, lockfree-queue
 
-  -- we can also add -with-rtsopts=-N if desired
-  ghc-options: -O2 -threaded -rtsopts 
+  -- NOTE: On my machine the -threaded runtime results in a slowdown, but the
+  -- different implementations compare the same both with and without -threaded
+  -- and +RTS -N; for now we'll leave it in for realism.
+
+  -- These would be interesting to play with on a >2 core machine:
+  --     -qa  -feager-blackholing  -qg1
+  ghc-options: -O2  -rtsopts  -threaded
   -- hs-source-dirs:      
   default-language:    Haskell2010
