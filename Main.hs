@@ -19,6 +19,7 @@ import Criterion.Main
 import qualified "chan-split-fast" Control.Concurrent.Chan.Split as S
 import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
+import Control.Monad.Primitive(PrimState)
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions.
@@ -42,61 +43,82 @@ main = do
                   , bench "sequential write all then read all" $ runtestChan1 n
                   , bench "repeated write some, read some" $ runtestChan2 n
                   -- new benchmarks
-                  , bench "async 2 writers two readers" $ runtestChanAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
+                  , bench "contention: async 100 writers 100 readers" $ runtestChanAsync 100 100 n
                   ]
             , bgroup "TChan" $
                   [ bench "async 1 writer 1 reader" $ runtestTChan0 n
                   , bench "sequential write all then read all" $ runtestTChan1 n
                   , bench "repeated write some, read some" $ runtestTChan2 n
-                  , bench "async 2 writers two readers" $ runtestTChanAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestTChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
+                  , bench "contention: async 100 writers 100 readers" $ runtestTChanAsync 100 100 n
                   ]
             , bgroup "TQueue" $
                   [ bench "async 1 writer 1 reader" $ runtestTQueue0 n
                   , bench "sequential write all then read all" $ runtestTQueue1 n
                   , bench "repeated write some, read some" $ runtestTQueue2 n
-                  , bench "async 2 writers two readers" $ runtestTQueueAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestTQueueAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
+                  , bench "contention: async 100 writers 100 readers" $ runtestTQueueAsync 100 100 n
                   ]
             , bgroup "TBQueue" $
                   [ bench "async 1 writer 1 reader" $ runtestTBQueue0 n
                   , bench "sequential write all then read all" $ runtestTBQueue1 n
                   , bench "repeated write some, read some" $ runtestTBQueue2 n
-                  , bench "async 2 writers two readers" $ runtestTBQueueAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestTBQueueAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
+                  , bench "contention: async 100 writers 100 readers" $ runtestTBQueueAsync 100 100 n
                   ]
             -- OTHER CHAN IMPLEMENTATIONS:
             , bgroup "chan-split-fast" $
                   [ bench "async 1 writer 1 reader" $ runtestSplitChan0 n
                   , bench "sequential write all then read all" $ runtestSplitChan1 n
                   , bench "repeated write some, read some" $ runtestSplitChan2 n
-                  , bench "async 2 writers two readers" $ runtestSplitChanAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestSplitChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestSplitChanAsync 3 1 n
+                  , bench "contention: async 100 writers 100 readers" $ runtestSplitChanAsync 100 100 n
+                  ]
             , bgroup "split-channel" $
-                  -- original tests from chanbench.hs
                   [ bench "async 1 writer 1 reader" $ runtestSplitChannel0 n
                   , bench "sequential write all then read all" $ runtestSplitChannel1 n
                   , bench "repeated write some, read some" $ runtestSplitChannel2 n
-                  -- new benchmarks
-                  , bench "async 2 writers two readers" $ runtestSplitChannelAsync 2 2 n
+                  , bench "async 2 writers 2 readers" $ runtestSplitChannelAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestSplitChannelAsync 3 1 n
-                  ]
+                  , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
                   ]
             ]
         , bgroup "Var primitives" $
-              [ bench "writeIORef, readIORef" $ (writeIORef ior '1' >> readIORef ior)
-              , bench "atomicModifyIORef" $ (atomicModifyIORef ior $ const ('2','2')) -- fair comparison?
+            [ bgroup "IORef" $ 
+                [ bench "newIORef ()" $ (newIORef ())
+                , bench "writeIORef, readIORef" $ (writeIORef ior '1' >> readIORef ior)
+                , bench "atomicModifyIORef" $ (atomicModifyIORef ior $ const ('2','2')) -- fair comparison?
+                ]
+            , bgroup "MVar" $
+                [ bench "newMVar ()" $ (newMVar ())
+                , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
+                -- I'd expect this to be comparable to above:
+                -- , bench "modifyMVar_" $ (modifyMVar_ mv (const $ return '2')) -- TODO need full first
+                ]
 
-              , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
+            , bgroup "TMVar" $
+                [ bench "newTMVarIO ()" $ (newTMVarIO ())
+                , bench "atomically: putTMVar, takeTMVar" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+                ]
 
-              , bench "atomically: putTMVar, takeTMVar" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+            , bgroup "TVar" $
+                [ bench "newTVarIO ()" $ (newTVarIO ())
+                , bench "atomically: writeTVar, readTVar" $ (atomically $ (writeTVar tv '1' >> readTVar tv))
+                , bench "atomically: modifyTVar" $ (atomically $ modifyTVar tv (const '2'))
+                ]
 
-              , bench "atomically: writeTVar, readTVar" $ (atomically $ (writeTVar tv '1' >> readTVar tv))
-
-              , bench "writeMutVar, readMutVar" $ ((writeMutVar mutv '1' :: IO ()) >> readMutVar mutv)
-              , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char) -- fair comparison?
-              ]
+            , bgroup "MutVar" $
+                [ bench "newMutVar ()" $ (newMutVar () :: IO (MutVar (PrimState IO) ()))
+                , bench "writeMutVar, readMutVar" $ ((writeMutVar mutv '1' :: IO ()) >> readMutVar mutv)
+                , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char)
+                ]
+            ]
         ]
 
 
