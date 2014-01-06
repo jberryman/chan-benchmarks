@@ -143,8 +143,8 @@ main = do
 runtestChan0, runtestChan1, runtestChan2 :: Int -> IO ()
 runtestChan0 n = do
   c <- newChan
-  a <- async $ replicateM_ n $ writeChan c (1 :: Int)
   b <- async $ replicateM_ n $ readChan c
+  a <- async $ replicateM_ n $ writeChan c (1 :: Int)
   waitBoth a b
   return ()
 
@@ -165,18 +165,17 @@ runtestChanAsync :: Int -> Int -> Int -> IO ()
 runtestChanAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   c <- newChan
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ writeChan c (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ readChan c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ writeChan c (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
 -- ----------
 
 runtestTChan0, runtestTChan1, runtestTChan2 :: Int -> IO ()
 runtestTChan0 n = do
   c <- newTChanIO
-  a <- async $ replicateM_ n $ atomically $ writeTChan c (1 :: Int)
   b <- async $ replicateM_ n $ atomically $ readTChan c
+  a <- async $ replicateM_ n $ atomically $ writeTChan c (1 :: Int)
   waitBoth a b
   return ()
 runtestTChan1 n = do
@@ -194,18 +193,17 @@ runtestTChanAsync :: Int -> Int -> Int -> IO ()
 runtestTChanAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   c <- newTChanIO
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTChan c (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTChan c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTChan c (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
 -- ----------
 
 runtestTQueue0, runtestTQueue1, runtestTQueue2 :: Int -> IO ()
 runtestTQueue0 n = do
   c <- newTQueueIO
-  a <- async $ replicateM_ n $ atomically $ writeTQueue c (1 :: Int)
   b <- async $ replicateM_ n $ atomically $ readTQueue c
+  a <- async $ replicateM_ n $ atomically $ writeTQueue c (1 :: Int)
   waitBoth a b
   return ()
 runtestTQueue1 n = do
@@ -223,18 +221,17 @@ runtestTQueueAsync :: Int -> Int -> Int -> IO ()
 runtestTQueueAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   c <- newTQueueIO
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTQueue c (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTQueue c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTQueue c (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
 -- ----------
 
 runtestTBQueue0, runtestTBQueue1, runtestTBQueue2 :: Int -> IO ()
 runtestTBQueue0 n = do
   c <- newTBQueueIO 4096
-  a <- async $ replicateM_ n $ atomically $ writeTBQueue c (1 :: Int)
   b <- async $ replicateM_ n $ atomically $ readTBQueue c
+  a <- async $ replicateM_ n $ atomically $ writeTBQueue c (1 :: Int)
   waitBoth a b
   return ()
 runtestTBQueue1 n = do
@@ -253,10 +250,9 @@ runtestTBQueueAsync :: Int -> Int -> Int -> IO ()
 runtestTBQueueAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   c <- newTBQueueIO 4096
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTBQueue c (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ atomically $ readTBQueue c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ atomically $ writeTBQueue c (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
 
 -- OTHER CHAN IMPLEMENTATIONS:
@@ -266,8 +262,8 @@ runtestTBQueueAsync writers readers n = do
 runtestSplitChan0, runtestSplitChan1, runtestSplitChan2 :: Int -> IO ()
 runtestSplitChan0 n = do
   (i,o) <- S.newSplitChan
-  a <- async $ replicateM_ n $ S.writeChan i (1 :: Int)
   b <- async $ replicateM_ n $ S.readChan o
+  a <- async $ replicateM_ n $ S.writeChan i (1 :: Int)
   waitBoth a b
   return ()
 
@@ -288,10 +284,9 @@ runtestSplitChanAsync :: Int -> Int -> Int -> IO ()
 runtestSplitChanAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   (i,o) <- S.newSplitChan
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ S.writeChan i (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ S.readChan o
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ S.writeChan i (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
 
 
@@ -300,8 +295,8 @@ runtestSplitChanAsync writers readers n = do
 runtestSplitChannel0, runtestSplitChannel1, runtestSplitChannel2 :: Int -> IO ()
 runtestSplitChannel0 n = do
   (i,o) <- SC.new
-  a <- async $ replicateM_ n $ SC.send i (1 :: Int)
   b <- async $ replicateM_ n $ SC.receive o
+  a <- async $ replicateM_ n $ SC.send i (1 :: Int)
   waitBoth a b
   return ()
 
@@ -322,8 +317,7 @@ runtestSplitChannelAsync :: Int -> Int -> Int -> IO ()
 runtestSplitChannelAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
   (i,o) <- SC.new
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ SC.send i (1 :: Int)
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ SC.receive o
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ SC.send i (1 :: Int)
   mapM_ wait rcvrs
-  mapM_ wait senders -- for exceptions, I guess?
 
