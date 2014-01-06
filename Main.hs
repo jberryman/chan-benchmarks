@@ -31,6 +31,15 @@ main = do
   let n = 100000
 --let n = 2000000  -- original suggested value, bugs if exceeded
   mv <- newEmptyMVar
+  -- --
+  -- mvWithFinalizer <- newEmptyMVar
+  -- mkWeakMVar mvWithFinalizer $ return ()
+  -- --
+  -- mvFinalizee <- newMVar 'a'
+  -- mvWithFinalizer <- newMVar ()
+  -- mkWeakMVar mvWithFinalizer $
+  --     modifyMVar_ mvFinalizee (const $ return 'b')
+  -- --
   tmv <- newEmptyTMVarIO 
   tv <- newTVarIO undefined 
   ior <- newIORef undefined
@@ -100,6 +109,12 @@ main = do
                 , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
                 -- I'd expect this to be comparable to above:
                 -- , bench "modifyMVar_" $ (modifyMVar_ mv (const $ return '2')) -- TODO need full first
+                , bench "newMVar; and make weak, with finalizer" $ (newMVar () >>= flip mkWeakMVar (return ()))
+                
+                -- These show no effect of a finalizer:
+                -- , bench "on MVar with finalizer: putMVar, takeMVar" $ (putMVar mvWithFinalizer '1' >> takeMVar mvWithFinalizer)
+                -- , bench "On target of an MVar finalizer: takeMVar, putMVar" $ (takeMVar mvFinalizee >>= putMVar mvFinalizee)
+
                 ]
 
             , bgroup "TMVar" $
@@ -120,6 +135,7 @@ main = do
                 ]
             ]
         ]
+  -- takeMVar mvWithFinalizer -- keep finalizer from actually running
 
 
 
