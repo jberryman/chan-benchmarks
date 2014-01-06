@@ -15,6 +15,8 @@ import Control.Concurrent.STM.TBQueue
 import Control.Concurrent.MVar
 import Data.IORef
 import Criterion.Main
+import Control.Exception(evaluate)
+
 
 import qualified "chan-split-fast" Control.Concurrent.Chan.Split as S
 import qualified "split-channel" Control.Concurrent.Chan.Split as SC
@@ -138,6 +140,33 @@ main = do
                 , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char)
                 ]
             ]
+        , bgroup "Misc" $
+            [ bench "pure cons-composition append x10" $ nf testCompositionAppend 10
+            , bench "pure cons then final reverse x10" $       nf testConsReverse 10
+            , bench "pure cons-composition append x100" $ nf testCompositionAppend 100
+            , bench "pure cons then final reverse x100" $       nf testConsReverse 100
+            , bench "pure cons-composition append x10000" $ nf testCompositionAppend 10000
+            , bench "pure cons then final reverse x10000" $       nf testConsReverse 10000
+
+            , bench "pure cons-composition append and prepend x10" $ nf testCompositionAppendPrepend 10
+            , bench "pure cons-composition append and prepend x100" $ nf testCompositionAppendPrepend 100
+            , bench "pure cons-composition append and prepend x10000" $ nf testCompositionAppendPrepend 10000
+
+            , bench "mvar-stored cons-composition append x10" $ nfIO $ testCompositionAppendInMVar 10
+            , bench "mvar-stored cons then final reverse x10" $ nfIO $       testConsReverseInMVar 10
+            , bench "mvar-stored cons-composition append x100" $ nfIO $ testCompositionAppendInMVar 100
+            , bench "mvar-stored cons then final reverse x100" $ nfIO $       testConsReverseInMVar 100
+            , bench "mvar-stored cons-composition append x10000" $ nfIO $ testCompositionAppendInMVar 10000
+            , bench "mvar-stored cons then final reverse x10000" $ nfIO $       testConsReverseInMVar 10000
+            
+            , bench "storing mvar-stored cons-composition append x10" $ nfIO $ testStoreCompositionAppendInMVar 10
+            , bench "storing mvar-stored cons then final reverse x10" $ nfIO $       testStoreConsReverseInMVar 10
+            , bench "storing mvar-stored cons-composition append x100" $ nfIO $ testStoreCompositionAppendInMVar 100
+            , bench "storing mvar-stored cons then final reverse x100" $ nfIO $       testStoreConsReverseInMVar 100
+            , bench "storing mvar-stored cons-composition append x10000" $ nfIO $ testStoreCompositionAppendInMVar 10000
+            , bench "storing mvar-stored cons then final reverse x10000" $ nfIO $       testStoreConsReverseInMVar 10000
+            ]
+
         ]
   -- takeMVar mvWithFinalizer -- keep finalizer from actually running
 
@@ -325,3 +354,70 @@ runtestSplitChannelAsync writers readers n = do
   senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ SC.send i (1 :: Int)
   mapM_ wait rcvrs
 
+
+
+-- --------------------------
+-- Misc Components
+
+testCompositionAppend :: Int -> [Int]
+testCompositionAppend n = (go id [1..n]) [] where
+    go f [] = f
+    go f (a:as) = go (f . (a:)) as
+
+-- are appends just as cheap as prepends?
+testCompositionAppendPrepend :: Int -> [Int]
+testCompositionAppendPrepend n = (go id [1..n]) [] where
+    go f [] = f
+    go f (a:as) 
+        | even a = go (f . (a:)) as
+        | otherwise = go ((a:) . f) as
+
+testConsReverse :: Int -> [Int]
+testConsReverse n = reverse $ go [1..n] [] where 
+    go [] as = as
+    go (a:xs) as = go xs (a:as)
+
+-- This is more realistic, eliminating any benefits from inlining and rewriting
+-- we might get from above
+testCompositionAppendInMVar :: Int -> IO [Int]
+testCompositionAppendInMVar n = do
+    v <- newMVar id
+    mapM_ (go v) [1..n]
+    fmap ($ []) $ takeMVar v
+  where go v a = do
+            f <- takeMVar v
+            let fa = f . (a:)
+            evaluate fa
+            putMVar v fa
+
+testConsReverseInMVar :: Int -> IO [Int]
+testConsReverseInMVar n = do
+    v <- newMVar []
+    mapM_ (go v) [1..n]
+    fmap reverse $ takeMVar v
+  where go v a = do
+            zs <- takeMVar v
+            let azs = a:zs
+            evaluate azs
+            putMVar v azs
+
+-- get an idea of the impact on writers:
+testStoreCompositionAppendInMVar :: Int -> IO ()
+testStoreCompositionAppendInMVar n = do
+    v <- newMVar id
+    mapM_ (go v) [1..n]
+  where go v a = do
+            f <- takeMVar v
+            let fa = f . (a:)
+            evaluate fa
+            putMVar v fa
+
+testStoreConsReverseInMVar :: Int -> IO ()
+testStoreConsReverseInMVar n = do
+    v <- newMVar []
+    mapM_ (go v) [1..n]
+  where go v a = do
+            zs <- takeMVar v
+            let azs = a:zs
+            evaluate azs
+            putMVar v azs
