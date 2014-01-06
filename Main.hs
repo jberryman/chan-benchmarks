@@ -46,7 +46,11 @@ main = do
   mutv <- newMutVar undefined
   defaultMain $
         [ bgroup "Channel implementations" $
-            [ bgroup "Chan" $
+            [ bgroup "For scale" $
+                  [ bench "reverse [1..n]" $ nf (\n'-> reverse [1..n']) n
+                  , bench "reverse replicate n 1" $ nf (\n'-> replicate n' (1::Int)) n
+                  ]
+            , bgroup "Chan" $
                   -- original tests from chanbench.hs
                   [ bench "async 1 writer 1 reader" $ runtestChan0 n
                   , bench "sequential write all then read all" $ runtestChan1 n
