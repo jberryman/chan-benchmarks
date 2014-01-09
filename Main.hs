@@ -60,6 +60,7 @@ main = do
                   -- new benchmarks
                   , bench "async 2 writers 2 readers" $ runtestChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestChanAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestChanAsync 100 100 n
                   ]
             , bgroup "TChan" $
@@ -68,6 +69,7 @@ main = do
                   , bench "repeated write some, read some" $ runtestTChan2 n
                   , bench "async 2 writers 2 readers" $ runtestTChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestTChanAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestTChanAsync 100 100 n
                   ]
             , bgroup "TQueue" $
@@ -76,6 +78,7 @@ main = do
                   , bench "repeated write some, read some" $ runtestTQueue2 n
                   , bench "async 2 writers 2 readers" $ runtestTQueueAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestTQueueAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestTQueueAsync 100 100 n
                   ]
             , bgroup "TBQueue" $
@@ -84,6 +87,7 @@ main = do
                   , bench "repeated write some, read some" $ runtestTBQueue2 n
                   , bench "async 2 writers 2 readers" $ runtestTBQueueAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestTBQueueAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestTBQueueAsync 100 100 n
                   ]
             -- OTHER CHAN IMPLEMENTATIONS:
@@ -93,6 +97,7 @@ main = do
                   , bench "repeated write some, read some" $ runtestSplitChan2 n
                   , bench "async 2 writers 2 readers" $ runtestSplitChanAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestSplitChanAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestSplitChanAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestSplitChanAsync 100 100 n
                   ]
             , bgroup "split-channel" $
@@ -101,6 +106,7 @@ main = do
                   , bench "repeated write some, read some" $ runtestSplitChannel2 n
                   , bench "async 2 writers 2 readers" $ runtestSplitChannelAsync 2 2 n
                   , bench "async 3 writers 1 reader" $ runtestSplitChannelAsync 3 1 n
+                  , bench "async 100 writers 1 reader" $ runtestSplitChannelAsync 100 1 n
                   , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
                   ]
             ]
@@ -386,8 +392,7 @@ testCompositionAppendInMVar n = do
     fmap ($ []) $ takeMVar v
   where go v a = do
             f <- takeMVar v
-            let fa = f . (a:)
-            evaluate fa
+            fa <- evaluate (f . (a:))
             putMVar v fa
 
 testConsReverseInMVar :: Int -> IO [Int]
@@ -397,8 +402,7 @@ testConsReverseInMVar n = do
     fmap reverse $ takeMVar v
   where go v a = do
             zs <- takeMVar v
-            let azs = a:zs
-            evaluate azs
+            azs <- evaluate (a:zs)
             putMVar v azs
 
 -- get an idea of the impact on writers:
@@ -408,8 +412,7 @@ testStoreCompositionAppendInMVar n = do
     mapM_ (go v) [1..n]
   where go v a = do
             f <- takeMVar v
-            let fa = f . (a:)
-            evaluate fa
+            fa <- evaluate (f . (a:))
             putMVar v fa
 
 testStoreConsReverseInMVar :: Int -> IO ()
@@ -418,6 +421,5 @@ testStoreConsReverseInMVar n = do
     mapM_ (go v) [1..n]
   where go v a = do
             zs <- takeMVar v
-            let azs = a:zs
-            evaluate azs
+            azs <- evaluate (a:zs)
             putMVar v azs
