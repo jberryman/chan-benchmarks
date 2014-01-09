@@ -7,6 +7,7 @@ import Control.Concurrent.Async
 import Control.Monad
 import System.Environment
 
+import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TQueue
@@ -32,7 +33,8 @@ import Control.Monad.Primitive(PrimState)
 main = do 
   let n = 100000
 --let n = 2000000  -- original suggested value, bugs if exceeded
-  mv <- newEmptyMVar
+  mv <- newEmptyMVar -- This to be left empty after each test
+  mvFull <- newMVar undefined
   -- --
   -- mvWithFinalizer <- newEmptyMVar
   -- mkWeakMVar mvWithFinalizer $ return ()
@@ -110,18 +112,32 @@ main = do
                   , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
                   ]
             ]
+        , bgroup "Forking, context switches, and Misc." $
+            [ bench "forkIO" (forkIO (return ()) >> return ())
+            , bench "put/take MVar" $ do
+                putMVar mv '0'
+                takeMVar mv
+            , bench "put/takeMVar + forkIO + 2 context switches" $ do
+                forkIO $ putMVar mv '0'
+                takeMVar mv
+            , bench "getNumCapabilities" getNumCapabilities
+            , bench "myThreadId" myThreadId
+            ]
+
         , bgroup "Var primitives" $
             [ bgroup "IORef" $ 
-                [ bench "newIORef ()" $ (newIORef ())
-                , bench "writeIORef, readIORef" $ (writeIORef ior '1' >> readIORef ior)
-                , bench "atomicModifyIORef" $ (atomicModifyIORef ior $ const ('2','2')) -- fair comparison?
+                [ bench "newIORef Char" $ (newIORef '0')
+                , bench "writeIORef" $ (writeIORef ior '1')
+                , bench "readIORef" $ (readIORef ior)
+                , bench "modifyIORef' (i.e. readIORef + writeIORef)" (modifyIORef' ior $ const '2')
+                , bench "atomicModifyIORef' (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef' ior $ const ('3','3')) -- fair comparison?
                 ]
             , bgroup "MVar" $
-                [ bench "newMVar ()" $ (newMVar ())
-                , bench "putMVar, takeMVar" $ (putMVar mv '1' >> takeMVar mv)
-                -- I'd expect this to be comparable to above:
-                -- , bench "modifyMVar_" $ (modifyMVar_ mv (const $ return '2')) -- TODO need full first
-                , bench "newMVar; and make weak, with finalizer" $ (newMVar () >>= flip mkWeakMVar (return ()))
+                [ bench "newEmptyMVar" $ newEmptyMVar
+                , bench "newEmptyMVar + putMVar (i.e. newMVar Char)" (newEmptyMVar >>= \v->putMVar v '0')
+                , bench "putMVar + takeMVar" $ (putMVar mv '1' >> takeMVar mv)
+                , bench "modifyMVarMasked_ (i.e. takeMVar + putMVar + exception-handling)" $ (modifyMVarMasked_ mvFull (const $ return '2'))
+                , bench "newMVar + mkWeakMVar w/ finalizer" $ (newMVar '1' >>= flip mkWeakMVar (return ()))
                 
                 -- These show no effect of a finalizer:
                 -- , bench "on MVar with finalizer: putMVar, takeMVar" $ (putMVar mvWithFinalizer '1' >> takeMVar mvWithFinalizer)
@@ -130,19 +146,24 @@ main = do
                 ]
 
             , bgroup "TMVar" $
-                [ bench "newTMVarIO ()" $ (newTMVarIO ())
-                , bench "atomically: putTMVar, takeTMVar" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+                [ bench "newEmptyTMVar (i.e. newTVarIO)" $ newEmptyTMVarIO
+                , bench "atomically (newEmptyTMVar + putTMVar) (i.e. newTVar + readTVar + writeTVar/retry)" (atomically (newEmptyTMVar >>= \v->putTMVar v ()))
+                , bench "atomically (putTMVar + takeTMVar)" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+                , bench "(atomically putTMVar) + (atomically takeTMVar)" $ ((atomically $ putTMVar tmv '1') >> (atomically $ takeTMVar tmv))
                 ]
 
             , bgroup "TVar" $
                 [ bench "newTVarIO ()" $ (newTVarIO ())
-                , bench "atomically: writeTVar, readTVar" $ (atomically $ (writeTVar tv '1' >> readTVar tv))
-                , bench "atomically: modifyTVar" $ (atomically $ modifyTVar tv (const '2'))
+                , bench "atomically writeTVar" $ (atomically $ writeTVar tv '1')
+                , bench "atomically readTVar" $ (atomically $ readTVar tv)
+                , bench "atomically modifyTVar' (i.e. atomically (readTVar + writeTVar))" $ (atomically $ modifyTVar' tv (const '2'))
+                , bench "(atomically writeTVar) + (atomically readTVar)" $ ((atomically $ writeTVar tv '1') >> (atomically $ readTVar tv))
                 ]
 
             , bgroup "MutVar" $
                 [ bench "newMutVar ()" $ (newMutVar () :: IO (MutVar (PrimState IO) ()))
-                , bench "writeMutVar, readMutVar" $ ((writeMutVar mutv '1' :: IO ()) >> readMutVar mutv)
+                , bench "writeMutVar" $ (writeMutVar mutv '1' :: IO ())
+                , bench "readMutVar" $ (readMutVar mutv :: IO Char)
                 , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char)
                 ]
             ]
