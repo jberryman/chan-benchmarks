@@ -40,6 +40,39 @@ Nice HTML output for a sample run performed on:
 
 ...are at `Benchmarks.chans_sample.html` and `Benchmarks.vars_sample.html`.
 
+## Some analysis of primitive operations
+
+    forkIO           309.ns
+    context switch  2975.ns
+
+    getNumCapabilities    4.1ns
+    myThreadId            4.7ns
+
+    newIORef      7.19
+    readIORef     3.74ns
+    writeIORef    7.02ns
+    modifyIORef'  7.02ns  -- even though this is implemented as read+write??
+    atomicModifyIORef'   22.43ns
+    atomicModifyIORef    53.67ns  -- variable; showing cost of lazy creation of (const 'x') thunks?
+
+    newEmptyMVar  7.32ns
+    takeMVar     16.21ns
+    putMVar       9.02ns 
+    modifyMVarMasked_   35.09ns  -- handler overhead ~ 10ns
+
+    newTVarIO    12.96ns
+    atomically writeTVar    53.35ns
+    atomically readTVar     54.29ns
+    readTVarIO               4.13ns
+    atomically modifyTVar'  63.76ns
+
+## Random resources
+
+Some discussion of nitty-gritty of `atomicModifyIORef`:
+
+    http://stackoverflow.com/questions/10102881/haskell-how-does-atomicmodifyioref-work
+    
+
 ## Random Analysis
 
 Back-of-envelope look at how primitive var read write cost relates to chan RW

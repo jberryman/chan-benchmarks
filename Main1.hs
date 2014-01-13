@@ -18,11 +18,11 @@ import Data.IORef
 import Criterion.Main
 import Control.Exception(evaluate)
 
-
 import qualified "chan-split-fast" Control.Concurrent.Chan.Split as S
 import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
+import Data.Atomics.Counter
 
 import Benchmarks
 
@@ -50,76 +50,70 @@ main = do
   tv <- newTVarIO undefined 
   ior <- newIORef undefined
   mutv <- newMutVar undefined
+
+  atomic_counter <- newCounter 0
+
+  -- to be left empty at emd of each test:
+  chanEmpty <- newChan
+  tchanEmpty <- newTChanIO
+  tqueueEmpty <- newTQueueIO
+  tbqueueEmpty <- newTBQueueIO 2
+  (fastEmptyI,fastEmptyO) <- S.newSplitChan
+  (splitchannelEmptyI,splitchannelEmptyO) <- SC.new
   defaultMain $
         [ bgroup "Channel implementations" $
-            [ bgroup "For scale" $
-                  [ bench "reverse [1..n]" $ nf (\n'-> reverse [1..n']) n
-                  , bench "reverse replicate n 1" $ nf (\n'-> replicate n' (1::Int)) n
-                  ]
-            , bgroup "Chan" $
-                  -- original tests from chanbench.hs
-                  [ bench "async 1 writer 1 reader" $ runtestChan0 n
-                  , bench "sequential write all then read all" $ runtestChan1 n
-                  , bench "repeated write some, read some" $ runtestChan2 n
-                  -- new benchmarks
-                  , bench "async 2 writers 2 readers" $ runtestChanAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestChanAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestChanAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestChanAsync 100 100 n
-                  ]
-            , bgroup "TChan" $
-                  [ bench "async 1 writer 1 reader" $ runtestTChan0 n
-                  , bench "sequential write all then read all" $ runtestTChan1 n
-                  , bench "repeated write some, read some" $ runtestTChan2 n
-                  , bench "async 2 writers 2 readers" $ runtestTChanAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestTChanAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestTChanAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestTChanAsync 100 100 n
-                  ]
-            , bgroup "TQueue" $
-                  [ bench "async 1 writer 1 reader" $ runtestTQueue0 n
-                  , bench "sequential write all then read all" $ runtestTQueue1 n
-                  , bench "repeated write some, read some" $ runtestTQueue2 n
-                  , bench "async 2 writers 2 readers" $ runtestTQueueAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestTQueueAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestTQueueAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestTQueueAsync 100 100 n
-                  ]
-            , bgroup "TBQueue" $
-                  [ bench "async 1 writer 1 reader" $ runtestTBQueue0 n
-                  , bench "sequential write all then read all" $ runtestTBQueue1 n
-                  , bench "repeated write some, read some" $ runtestTBQueue2 n
-                  , bench "async 2 writers 2 readers" $ runtestTBQueueAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestTBQueueAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestTBQueueAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestTBQueueAsync 100 100 n
-                  ]
-            -- OTHER CHAN IMPLEMENTATIONS:
-            , bgroup "chan-split-fast" $
-                  [ bench "async 1 writer 1 reader" $ runtestSplitChan0 n
-                  , bench "sequential write all then read all" $ runtestSplitChan1 n
-                  , bench "repeated write some, read some" $ runtestSplitChan2 n
-                  , bench "async 2 writers 2 readers" $ runtestSplitChanAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestSplitChanAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestSplitChanAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestSplitChanAsync 100 100 n
-                  ]
-            , bgroup "split-channel" $
-                  [ bench "async 1 writer 1 reader" $ runtestSplitChannel0 n
-                  , bench "sequential write all then read all" $ runtestSplitChannel1 n
-                  , bench "repeated write some, read some" $ runtestSplitChannel2 n
-                  , bench "async 2 writers 2 readers" $ runtestSplitChannelAsync 2 2 n
-                  , bench "async 3 writers 1 reader" $ runtestSplitChannelAsync 3 1 n
-                  , bench "async 100 writers 1 reader" $ runtestSplitChannelAsync 100 1 n
-                  , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
-                  ]
+            -- Very artificial; just adding up the consts of the
+            -- takes/puts/reads involved in getting a single message in and out
+            [ bgroup "Latency micro-benchmark" $
+                [ bench "Chan" (writeChan chanEmpty () >> readChan chanEmpty)
+                , bench "TChan" (atomically (writeTChan tchanEmpty () >>  readTChan tchanEmpty))
+                , bench "TQueue" (atomically (writeTQueue tqueueEmpty () >>  readTQueue tqueueEmpty))
+                , bench "TBQueue" (atomically (writeTBQueue tbqueueEmpty () >>  readTBQueue tbqueueEmpty))
+                , bench "chan-split-fast" (S.writeChan fastEmptyI () >> S.readChan fastEmptyO)
+                , bench "split-channel" (SC.send splitchannelEmptyI () >> SC.receive splitchannelEmptyO)
+                ]
+            , bgroup ("Throughput with "++show n++" messages") $
+                -- some pure operations we'd like a rough measurement for, e.g.
+                -- the TQueue performs a reverse [1..n] in a test run, so we'd
+                -- like an idea of how much that factor affects throughput.
+                [ bgroup "For scale" $
+                      [ bench "reverse [1..n]" $ nf (\n'-> reverse [1..n']) n
+                      , bench "reverse replicate n 1" $ nf (\n'-> replicate n' (1::Int)) n
+                      ]
+                , bgroup "Chan" $
+                      -- original tests from chanbench.hs
+                      [ bench "sequential write all then read all" $ runtestChan1 n
+                      , bench "repeated write some, read some" $ runtestChan2 n
+                      ]
+                , bgroup "TChan" $
+                      [ bench "sequential write all then read all" $ runtestTChan1 n
+                      , bench "repeated write some, read some" $ runtestTChan2 n
+                      ]
+                , bgroup "TQueue" $
+                      [ bench "sequential write all then read all" $ runtestTQueue1 n
+                      , bench "repeated write some, read some" $ runtestTQueue2 n
+                      ]
+                , bgroup "TBQueue" $
+                      [ bench "sequential write all then read all" $ runtestTBQueue1 n
+                      , bench "repeated write some, read some" $ runtestTBQueue2 n
+                      ]
+                -- OTHER CHAN IMPLEMENTATIONS:
+                , bgroup "chan-split-fast" $
+                      [ bench "sequential write all then read all" $ runtestSplitChan1 n
+                      , bench "repeated write some, read some" $ runtestSplitChan2 n
+                      ]
+                , bgroup "split-channel" $
+                      [ bench "sequential write all then read all" $ runtestSplitChannel1 n
+                      , bench "repeated write some, read some" $ runtestSplitChannel2 n
+                      ]
+                ]
             ]
-        , bgroup "Forking, context switches, and Misc." $
+        , bgroup "Forking, context switches, and Misc. on a single core" $
             [ bench "forkIO" (forkIO (return ()) >> return ())
-            , bench "put/take MVar" $ do
+            , bench "put,take MVar" $ do
                 putMVar mv '0'
                 takeMVar mv
-            , bench "put/takeMVar + forkIO + 2 context switches" $ do
+            , bench "put,takeMVar + forkIO + 2 context switches" $ do
                 forkIO $ putMVar mv '0'
                 takeMVar mv
             , bench "getNumCapabilities" getNumCapabilities
@@ -127,41 +121,48 @@ main = do
             ]
 
         , bgroup "Var primitives" $
-            [ bgroup "IORef" $ 
+            [ bgroup "For scale" $ 
+                [ bench "mod" $ nf (2147483647 `mod`) (8 :: Int)
+                , bench "rem" $ nf (2147483647 `rem`) (8 :: Int)
+                ]
+            , bgroup "atomic-primops (puts on safety goggles...)" $ 
+                [ bench "newCounter" $ newCounter 0
+                , bench "incrCounter 1" $ incrCounter 1 atomic_counter
+                , bench "incrCounter 1024" $ incrCounter 1024 atomic_counter
+                ]
+            , bgroup "IORef" $ 
                 [ bench "newIORef Char" $ (newIORef '0')
                 , bench "writeIORef" $ (writeIORef ior '1')
                 , bench "readIORef" $ (readIORef ior)
                 , bench "modifyIORef' (i.e. readIORef + writeIORef)" (modifyIORef' ior $ const '2')
-                , bench "atomicModifyIORef' (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef' ior $ const ('3','3')) -- fair comparison?
+                , bench "atomicModifyIORef' (i.e. (in GHC) strict atomicModifyMutVar)" $ (atomicModifyIORef' ior $ const ('3','3'))
+                , bench "atomicModifyIORef (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef ior $ const ('3','3'))
                 ]
             , bgroup "MVar" $
                 [ bench "newEmptyMVar" $ newEmptyMVar
                 , bench "newEmptyMVar + putMVar (i.e. newMVar Char)" (newEmptyMVar >>= \v->putMVar v '0')
                 , bench "putMVar + takeMVar" $ (putMVar mv '1' >> takeMVar mv)
                 , bench "modifyMVarMasked_ (i.e. takeMVar + putMVar + exception-handling)" $ (modifyMVarMasked_ mvFull (const $ return '2'))
-                , bench "newMVar + mkWeakMVar w/ finalizer" $ (newMVar '1' >>= flip mkWeakMVar (return ()))
-                
+                , bench "newMVar + mkWeakMVar with finalizer" $ (newMVar '1' >>= flip mkWeakMVar (return ()))
                 -- These show no effect of a finalizer:
                 -- , bench "on MVar with finalizer: putMVar, takeMVar" $ (putMVar mvWithFinalizer '1' >> takeMVar mvWithFinalizer)
                 -- , bench "On target of an MVar finalizer: takeMVar, putMVar" $ (takeMVar mvFinalizee >>= putMVar mvFinalizee)
-
-                ]
-
-            , bgroup "TMVar" $
-                [ bench "newEmptyTMVar (i.e. newTVarIO)" $ newEmptyTMVarIO
-                , bench "atomically (newEmptyTMVar + putTMVar) (i.e. newTVar + readTVar + writeTVar/retry)" (atomically (newEmptyTMVar >>= \v->putTMVar v ()))
-                , bench "atomically (putTMVar + takeTMVar)" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
-                , bench "(atomically putTMVar) + (atomically takeTMVar)" $ ((atomically $ putTMVar tmv '1') >> (atomically $ takeTMVar tmv))
                 ]
 
             , bgroup "TVar" $
                 [ bench "newTVarIO ()" $ (newTVarIO ())
                 , bench "atomically writeTVar" $ (atomically $ writeTVar tv '1')
                 , bench "atomically readTVar" $ (atomically $ readTVar tv)
+                , bench "readTVarIO" $ (readTVarIO tv)
                 , bench "atomically modifyTVar' (i.e. atomically (readTVar + writeTVar))" $ (atomically $ modifyTVar' tv (const '2'))
                 , bench "(atomically writeTVar) + (atomically readTVar)" $ ((atomically $ writeTVar tv '1') >> (atomically $ readTVar tv))
                 ]
-
+            , bgroup "TMVar" $
+                [ bench "newEmptyTMVar (i.e. newTVarIO)" $ newEmptyTMVarIO
+                , bench "atomically (newEmptyTMVar + putTMVar) (i.e. newTVar + readTVar + writeTVar,retry)" (atomically (newEmptyTMVar >>= \v->putTMVar v ()))
+                , bench "atomically (putTMVar + takeTMVar)" $ (atomically $ (putTMVar tmv '1' >> takeTMVar tmv))
+                , bench "(atomically putTMVar) + (atomically takeTMVar)" $ ((atomically $ putTMVar tmv '1') >> (atomically $ takeTMVar tmv))
+                ]
             , bgroup "MutVar" $
                 [ bench "newMutVar ()" $ (newMutVar () :: IO (MutVar (PrimState IO) ()))
                 , bench "writeMutVar" $ (writeMutVar mutv '1' :: IO ())
@@ -169,6 +170,8 @@ main = do
                 , bench "atomicModifyMutVar" $ (atomicModifyMutVar mutv $ const ('2','2') :: IO Char)
                 ]
             ]
+        -- Some more tests of pure operations relevant to TQueue style dequeue
+        -- performance.
         , bgroup "Misc" $
             [ bench "pure cons-composition append x10" $ nf testCompositionAppend 10
             , bench "pure cons then final reverse x10" $       nf testConsReverse 10
@@ -195,7 +198,6 @@ main = do
             , bench "storing mvar-stored cons-composition append x10000" $ nfIO $ testStoreCompositionAppendInMVar 10000
             , bench "storing mvar-stored cons then final reverse x10000" $ nfIO $       testStoreConsReverseInMVar 10000
             ]
-
         ]
   -- takeMVar mvWithFinalizer -- keep finalizer from actually running
 
