@@ -35,6 +35,7 @@ import Benchmarks
 main = do 
   let n = 100000
 --let n = 2000000  -- original suggested value, bugs if exceeded
+
   mv <- newEmptyMVar -- This to be left empty after each test
   mvFull <- newMVar undefined
   -- --
@@ -72,7 +73,7 @@ main = do
                 , bench "chan-split-fast" (S.writeChan fastEmptyI () >> S.readChan fastEmptyO)
                 , bench "split-channel" (SC.send splitchannelEmptyI () >> SC.receive splitchannelEmptyO)
                 ]
-            , bgroup ("Throughput with "++show n++" messages") $
+            , bgroup ("Single-thread throughput with "++show n++" messages") $
                 -- some pure operations we'd like a rough measurement for, e.g.
                 -- the TQueue performs a reverse [1..n] in a test run, so we'd
                 -- like an idea of how much that factor affects throughput.

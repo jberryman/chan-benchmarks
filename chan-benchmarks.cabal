@@ -26,10 +26,9 @@ executable bench-single
                      , criterion
                      , primitive
                      -- for kicks (you might have to get this from Github):
-                     , atomic-primops == 0.5
+                     , atomic-primops == 0.4
             -- other chans:
                      , chan-split-fast
-                     -- provides more capabilities than `chan-split-fast`:
                      , split-channel
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
@@ -52,9 +51,9 @@ executable bench-multi
                      , async
                      , criterion
                      , primitive
+                     , atomic-primops == 0.4
             -- other chans:
                      , chan-split-fast
-                     -- provides more capabilities than `chan-split-fast`:
                      , split-channel
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
@@ -65,7 +64,18 @@ executable bench-multi
   -- We fix this to 2 cores, so that we can be a little less careful about how
   -- we write and interpret our tests.
   -- These would be interesting to play with on a >2 core machine:
-  --    -feager-blackholing  -qa   -qg1
+  --    -feager-blackholing  -qa   -qg1   -fllvm
+  ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
+  ghc-options: -fforce-recomp
+  default-language:    Haskell2010
+
+executable test-atomics
+  main-is:           TestAtomics.hs
+  build-depends:       base >=4.6 && <4.7
+                     , stm
+                     , async
+                     , atomic-primops == 0.4
+
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
   ghc-options: -fforce-recomp
   default-language:    Haskell2010

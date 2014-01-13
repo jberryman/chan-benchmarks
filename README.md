@@ -66,6 +66,21 @@ Nice HTML output for a sample run performed on:
     readTVarIO               4.13ns
     atomically modifyTVar'  63.76ns
 
+    --counter from atomic-primops v0.5
+    -- NOTE: ACTUALLY 
+    newCounter   11.99ns
+    incrCounter   9.28ns
+
+
+    Throughput of incrementing atomic counter with...
+        modifyMVar_        331.29ms / 100000  = 3312.9ns per increment
+        modifyMVarMasked_  323.41ms / 100000    3234.1ns    -- NOTE: small variance
+        atomicModifyIORef'  87.66ms / 100000     876.6ns    -- NOTE: sort of folded normal distribution beginning at 9.76ms , where the max we saw was 256.12ms
+        modifyTVar'         19.10ms / 100000     191.0ns    -- NOTE: much lower variance, with samples 17 - 21 ms
+
+        incrCounter          0.97ms / 100000  -- NOTE: GARBAGE; COUNTER NOT ATOMIC
+
+
 ## Random resources
 
 Some discussion of nitty-gritty of `atomicModifyIORef`:
