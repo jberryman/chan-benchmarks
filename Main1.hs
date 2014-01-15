@@ -23,6 +23,8 @@ import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
+import System.Random
+import System.Random.MWC
 
 import Benchmarks
 
@@ -61,6 +63,11 @@ main = do
   tbqueueEmpty <- newTBQueueIO 2
   (fastEmptyI,fastEmptyO) <- S.newSplitChan
   (splitchannelEmptyI,splitchannelEmptyO) <- SC.new
+
+  -- random generators
+  mwc_gen <- createSystemRandom
+  sys_rand_gen <- newStdGen
+
   defaultMain $
         [ bgroup "Channel implementations" $
             -- Very artificial; just adding up the consts of the
@@ -119,6 +126,13 @@ main = do
                 takeMVar mv
             , bench "getNumCapabilities" getNumCapabilities
             , bench "myThreadId" myThreadId
+
+            , bench "myThreadId >>= threadCapability" $ myThreadId >>= threadCapability
+            -- It may not be possible to re-use generators for our applications of random, so:
+            , bench "random new_gen" $ newStdGen
+            , bench "random Int range: (1,8)" $ whnf (randomR (1 :: Int, 8)) sys_rand_gen
+            , bench "mwc-random new_gen" $ createSystemRandom
+            , bench "mwc-random Int range: (1,8)" $ ((uniformR (1 :: Int, 8) mwc_gen) :: IO Int)
             ]
 
         , bgroup "Var primitives" $

@@ -23,6 +23,9 @@ executable bench-single
   build-depends:       base >=4.6 && <4.7
                      , stm
                      , async
+                     -- random number generation:
+                     , random
+                     , mwc-random
                      , criterion
                      , primitive
                      -- for kicks (you might have to get this from Github):
