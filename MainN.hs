@@ -81,33 +81,79 @@ main = do
             --   - 4 newEmptyMVar
             --   - 4 takeMVar
             --   - 4 putMVar
+            -- TODO: also test with N green threads per core.
             [ bgroup ("Throughput on "++(show n)++" concurrent atomic mods") $
-                  [ bench "modifyMVar_" $ do
-                      dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (modifyMVar_ counter_mvar (return . (+1))) >> putMVar done1 ()) $ zip starts dones
+                let {-# INLINE mod_test #-}
+                    mod_test threads modf = do
+                      dones <- replicateM threads newEmptyMVar ; starts <- replicateM threads newEmptyMVar
+                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` threads) modf >> putMVar done1 ()) $ zip starts dones
                       mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
 
-                  , bench "modifyMVarMasked_" $ do
-                      dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (modifyMVarMasked_ counter_mvar (return . (+1))) >> putMVar done1 ()) $ zip starts dones
-                      mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
-                  
-                  , bench "atomicModifyIORef'" $ do
-                      dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (atomicModifyIORef' counter_ioref (\x-> (x+1,()) )) >> putMVar done1 ()) $ zip starts dones
-                      mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
+                 in [ bgroup "1 thread per HEC" $
+                       [ bench "modifyMVar_" $ mod_test procs $
+                          (modifyMVar_ counter_mvar (return . (+1)))
 
-                  , bench "atomically modifyTVar'" $ do
-                      dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (atomically $ modifyTVar' counter_tvar ((+1))) >> putMVar done1 ()) $ zip starts dones
-                      mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
+                        , bench "modifyMVarMasked_" $ mod_test procs $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        
+                        , bench "atomicModifyIORef'" $ mod_test procs $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
 
-                  , bench "incrCounter (atomic-primops)" $ do
-                      dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (incrCounter 1 counter_atomic_counter) >> putMVar done1 ()) $ zip starts dones
-                      mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
+                        , bench "atomically modifyTVar'" $ mod_test procs $
+                            (atomically $ modifyTVar' counter_tvar ((+1))) 
 
-                  ]
+                        , bench "incrCounter (atomic-primops)" $ mod_test procs $
+                            (incrCounter 1 counter_atomic_counter)
+                        ]
+                    , bgroup "2 threads per HEC" $
+                       [ bench "modifyMVar_" $ mod_test (procs*2) $
+                          (modifyMVar_ counter_mvar (return . (+1)))
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*2) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*2) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*2) $
+                            (atomically $ modifyTVar' counter_tvar ((+1))) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*2) $
+                            (incrCounter 1 counter_atomic_counter)
+                        ]
+                    , bgroup "4 threads per HEC" $
+                       [ bench "modifyMVar_" $ mod_test (procs*4) $
+                          (modifyMVar_ counter_mvar (return . (+1)))
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*4) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*4) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*4) $
+                            (atomically $ modifyTVar' counter_tvar ((+1))) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*4) $
+                            (incrCounter 1 counter_atomic_counter)
+                        ]
+                    , bgroup "8 threads per HEC" $
+                       [ bench "modifyMVar_" $ mod_test (procs*8) $
+                          (modifyMVar_ counter_mvar (return . (+1)))
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*8) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*8) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*8) $
+                            (atomically $ modifyTVar' counter_tvar ((+1))) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*8) $
+                            (incrCounter 1 counter_atomic_counter)
+                        ]
+                    ]
             ]
             -- TODO: define these in terms of numCapabilities:
             -- 1 r thread 1 w thread: measuring r/w contention
@@ -131,7 +177,8 @@ main = do
                       -- reading in the other; make sure memory usage isn't
                       -- influencing mean:
                       --
-                      -- This measures writer/writer contention:
+                      -- This measures writer/writer contention, in this case I
+                      -- think we see a lot of thread blocking/waiting delays
                       , bench ("async "++(show procs)++" writers") $ do
                           dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
                           mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (writeChan fill_empty_chan ()) >> putMVar done1 ()) $ zip starts dones
