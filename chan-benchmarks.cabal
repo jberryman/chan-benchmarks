@@ -92,3 +92,53 @@ executable test-atomics
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
   ghc-options: -fforce-recomp
   default-language:    Haskell2010
+
+-- --------------
+
+executable experiment-mvar-fairness
+  main-is:           MVarExperiment.hs
+  other-modules:     Benchmarks
+  build-depends:       base >=4.6 && <4.7
+                     , stm
+                     , async
+                     -- random number generation:
+                     , random
+                     , mwc-random
+                     , criterion
+                     , primitive
+                     -- for kicks (you might have to get this from Github):
+                     , atomic-primops == 0.4
+                     , chan-split-fast
+                     , split-channel
+  
+  ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N1
+  default-language:    Haskell2010
+
+executable experiment-tvar-interleaving
+  main-is:           TVarExperiment.hs
+  other-modules:     Benchmarks
+  build-depends:       base >=4.6 && <4.7
+                     , stm
+                     , async
+                     -- random number generation:
+                     , random
+                     , mwc-random
+                     , criterion
+                     , primitive
+                     -- for kicks (you might have to get this from Github):
+                     , atomic-primops == 0.4
+                     , chan-split-fast
+                     , split-channel
+  
+  ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
+  default-language:    Haskell2010
+
+executable retry-experiment
+  main-is:           RetryExperiment.hs
+  other-modules:     Benchmarks
+  build-depends:       base >=4.6 && <4.7
+                     , stm
+  
+  ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
+  ghc-options: -Wall
+  default-language:    Haskell2010
