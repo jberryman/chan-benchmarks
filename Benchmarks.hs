@@ -236,3 +236,88 @@ testStoreConsReverseInMVar n = do
             zs <- takeMVar v
             azs <- evaluate (a:zs)
             putMVar v azs
+
+-- -------------------------------------------------------------------------
+
+-- we'd like to know whether in practice contention can be reduced on a shared
+-- counter by first doing a read, and only doing an atomicModify when the
+-- counter is not seen to have been incremented yet (note: even so, by the time
+-- we're in the atomic block it may have been incremented, in which case it's a
+-- NOOP)
+readMaybeAtomicModifyIORef :: Int -> IO ()
+readMaybeAtomicModifyIORef n = do
+    counter <- newIORef 0
+    stack1 <- newIORef [] -- non-contentious work done on these:
+    stack2 <- newIORef []
+    let op stck = do cnt <- readIORef counter
+                     atomicModifyIORef' stck (\st-> (cnt:st,()))
+                     cnt' <- readIORef counter
+                     if cnt' == cnt
+                         then atomicModifyIORef' counter (\cnt1-> (if cnt1 == cnt then cnt+1 else cnt1, ()))
+                         else return ()
+
+    w1 <- async $ replicateM_ n $ op stack1
+    w2 <- async $ replicateM_ n $ op stack2
+    waitBoth w1 w2
+    return ()
+
+atomicMaybeModifyIORef :: Int -> IO ()
+atomicMaybeModifyIORef n = do
+    counter <- newIORef 0
+    stack1 <- newIORef [] -- non-contentious work done on these:
+    stack2 <- newIORef []
+    let op stck = do cnt <- readIORef counter
+                     atomicModifyIORef' stck (\st-> (cnt:st,()))
+                     atomicModifyIORef' counter (\cnt1-> (if cnt1 == cnt then cnt+1 else cnt1, ()))
+
+    w1 <- async $ replicateM_ n $ op stack1
+    w2 <- async $ replicateM_ n $ op stack2
+    waitBoth w1 w2
+    return ()
+
+-- variants with a less realistic payload, simulating higher contention with more writers:
+readMaybeAtomicModifyIORefHiC :: Int -> IO ()
+readMaybeAtomicModifyIORefHiC n = do
+    counter <- newIORef 0
+    let op  =     do cnt <- readIORef counter
+                     evaluate (show $ sqrt cnt)
+                     cnt' <- readIORef counter
+                     if cnt' == cnt
+                         then atomicModifyIORef' counter (\cnt1-> (if cnt1 == cnt then cnt+1 else cnt1, ()))
+                         else return ()
+
+    w1 <- async $ replicateM_ n $ op 
+    w2 <- async $ replicateM_ n $ op 
+    waitBoth w1 w2
+    return ()
+
+atomicMaybeModifyIORefHiC :: Int -> IO ()
+atomicMaybeModifyIORefHiC n = do
+    counter <- newIORef 0
+    let op      = do cnt <- readIORef counter
+                     evaluate (show $ sqrt cnt)
+                     atomicModifyIORef' counter (\cnt1-> (if cnt1 == cnt then cnt+1 else cnt1, ()))
+
+    w1 <- async $ replicateM_ n $ op 
+    w2 <- async $ replicateM_ n $ op 
+    waitBoth w1 w2
+    return ()
+
+
+
+-- Do atomicModifyIORefs block readers?
+-- NO
+readsAgainstAtomicModifyIORefs :: Int -> IO ()
+readsAgainstAtomicModifyIORefs n = do
+    cntr <- newIORef 0
+    t <- async $ forever (atomicModifyIORef' cntr (\c-> (c+1,())))
+    replicateM_ n (readIORef cntr >>= evaluate)
+    cancel t
+
+readsAgainstNonAtomicModify :: Int -> IO ()
+readsAgainstNonAtomicModify n = do
+    cntr <- newIORef 0
+    t <- async $ forever (modifyIORef' cntr (\c-> c+1))
+    replicateM_ n (readIORef cntr >>= evaluate)
+    cancel t
+    

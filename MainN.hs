@@ -166,6 +166,19 @@ main = do
                             (incrCounter 1 counter_atomic_counter)
                         ]
                     ]
+            , bgroup "Misc" $
+                -- If the second shows some benefit on just two threads, then 
+                -- it represents a useful technique for reducing contention:
+                [ bench "contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORef n
+                , bench "read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORef n
+                , bench "Higher contention, contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORefHiC n
+                , bench "Higher contention, read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORefHiC n
+
+                -- we should expect these to be the same:
+                , bench "reads against atomicModifyIORefs" $ readsAgainstAtomicModifyIORefs n
+                , bench "reads against modifyIORefs" $ readsAgainstNonAtomicModify n
+                -- TODO how do these compare with STM?
+                ]
             ]
             -- TODO: define these in terms of numCapabilities:
             -- 1 r thread 1 w thread: measuring r/w contention
