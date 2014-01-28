@@ -39,6 +39,14 @@ executable bench-single
                    --, chaselev-deque
                    --, lockfree-queue
 
+                     -- arrays:
+                     , array
+                     , vector
+                     , primitive
+                     -- time:
+                     , old-time
+                     , time
+
   -- Still testing the threaded runtime, but removing OS thread scheduling from
   -- the picture:
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N1
@@ -71,6 +79,8 @@ executable bench-multi
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
   ghc-options: -fforce-recomp
   default-language:    Haskell2010
+
+-- --------------
 
 executable test-atomics
   main-is:           TestAtomics.hs

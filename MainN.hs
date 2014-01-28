@@ -74,8 +74,10 @@ main = do
 
   defaultMain $
         [ bgroup "Var primitives" $
-            -- This gives us an idea of how long a lock is held by these atomic ops.
-            -- compare this with latency measure in Main1 to get the whole picture:
+            -- This gives us an idea of how long a lock is held by these atomic
+            -- ops, and the effects of retry/blocking scheduling behavior.
+            -- compare this with latency measure in Main1 to get the whole
+            -- picture:
             -- Subtract the cost of:
             --   - 2 context switches
             --   - 4 newEmptyMVar
@@ -83,10 +85,13 @@ main = do
             --   - 4 putMVar
             -- TODO: also test with N green threads per core.
             [ bgroup ("Throughput on "++(show n)++" concurrent atomic mods") $
+                     -- just forks some threads all atomically modifying a variable:
                 let {-# INLINE mod_test #-}
-                    mod_test threads modf = do
+                    mod_test = mod_test_n n
+                    {-# INLINE mod_test_n #-}
+                    mod_test_n n' = \threads modf -> do
                       dones <- replicateM threads newEmptyMVar ; starts <- replicateM threads newEmptyMVar
-                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` threads) modf >> putMVar done1 ()) $ zip starts dones
+                      mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n' `div` threads) modf >> putMVar done1 ()) $ zip starts dones
                       mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
 
                  in [ bgroup "1 thread per HEC" $
@@ -104,6 +109,13 @@ main = do
 
                         , bench "incrCounter (atomic-primops)" $ mod_test procs $
                             (incrCounter 1 counter_atomic_counter)
+                        
+                        -- I want to compare these with the same results above;
+                        -- see also TVarExperiment:
+                        -- , bench "atomicModifyIORef' x10" $ mod_test_n (10*n) procs $
+                        --     (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+                        -- , bench "atomically modifyTVar' x10" $ mod_test_n (10*n) procs $
+                        --     (atomically $ modifyTVar' counter_tvar ((+1))) 
                         ]
                     , bgroup "2 threads per HEC" $
                        [ bench "modifyMVar_" $ mod_test (procs*2) $

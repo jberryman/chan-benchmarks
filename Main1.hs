@@ -26,6 +26,14 @@ import Data.Atomics.Counter
 import System.Random
 import System.Random.MWC
 
+import Data.Array.IArray
+import qualified Data.Vector as V
+import qualified Data.Vector.Generic.Mutable as MV
+import qualified Data.Primitive.Array as P
+
+import System.Time(getClockTime)
+import Data.Time.Clock.POSIX
+
 import Benchmarks
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
@@ -67,6 +75,17 @@ main = do
   -- random generators
   mwc_gen <- createSystemRandom
   sys_rand_gen <- newStdGen
+
+  let arr8 = listArray (0,7) [1..8] :: Array Int Int
+  let arr16 = listArray (0,15) [1..16] :: Array Int Int
+  let vec8 = V.fromList [1..8] :: V.Vector Int
+  let vec16 = V.fromList [1..16] :: V.Vector Int
+  mvec8 <- V.thaw vec8 -- :: V.MVector (PrimState IO) Int
+  mvec16 <- V.thaw vec16 -- :: V.MVector (PrimState IO) Int
+  parr8 <- P.newArray 8 (0::Int)
+  parr16 <- P.newArray 16 (0::Int)
+  iparr8 <- ((P.newArray 8 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
+  iparr16 <- ((P.newArray 16 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
 
   defaultMain $
         [ bgroup "Channel implementations" $
@@ -131,8 +150,13 @@ main = do
             -- It may not be possible to re-use generators for our applications of random, so:
             , bench "random new_gen" $ newStdGen
             , bench "random Int range: (1,8)" $ whnf (randomR (1 :: Int, 8)) sys_rand_gen
-            , bench "mwc-random new_gen" $ createSystemRandom
+          -- THIS IS CRAZY SLOW TODO move out of this so we can actually compare graphs:
+          --, bench "mwc-random new_gen" $ createSystemRandom
             , bench "mwc-random Int range: (1,8)" $ ((uniformR (1 :: Int, 8) mwc_gen) :: IO Int)
+            , bench "randomRIO (1,8)" $ randomRIO (1::Int,8)
+
+            , bench "old-time getClockTime" $ getClockTime
+            , bench "time getPOSIXTime" getPOSIXTime
             ]
 
         , bgroup "Var primitives" $
@@ -188,30 +212,49 @@ main = do
         -- Some more tests of pure operations relevant to TQueue style dequeue
         -- performance.
         , bgroup "Misc" $
-            [ bench "pure cons-composition append x10" $ nf testCompositionAppend 10
-            , bench "pure cons then final reverse x10" $       nf testConsReverse 10
-            , bench "pure cons-composition append x100" $ nf testCompositionAppend 100
-            , bench "pure cons then final reverse x100" $       nf testConsReverse 100
-            , bench "pure cons-composition append x10000" $ nf testCompositionAppend 10000
-            , bench "pure cons then final reverse x10000" $       nf testConsReverse 10000
+            -- of interest for TQueue style approach
+            [ bgroup "cons and reverse" $ 
+                [ bench "pure cons-composition append x10" $ nf testCompositionAppend 10
+                , bench "pure cons then final reverse x10" $       nf testConsReverse 10
+                , bench "pure cons-composition append x100" $ nf testCompositionAppend 100
+                , bench "pure cons then final reverse x100" $       nf testConsReverse 100
+                , bench "pure cons-composition append x10000" $ nf testCompositionAppend 10000
+                , bench "pure cons then final reverse x10000" $       nf testConsReverse 10000
 
-            , bench "pure cons-composition append and prepend x10" $ nf testCompositionAppendPrepend 10
-            , bench "pure cons-composition append and prepend x100" $ nf testCompositionAppendPrepend 100
-            , bench "pure cons-composition append and prepend x10000" $ nf testCompositionAppendPrepend 10000
+                , bench "pure cons-composition append and prepend x10" $ nf testCompositionAppendPrepend 10
+                , bench "pure cons-composition append and prepend x100" $ nf testCompositionAppendPrepend 100
+                , bench "pure cons-composition append and prepend x10000" $ nf testCompositionAppendPrepend 10000
 
-            , bench "mvar-stored cons-composition append x10" $ nfIO $ testCompositionAppendInMVar 10
-            , bench "mvar-stored cons then final reverse x10" $ nfIO $       testConsReverseInMVar 10
-            , bench "mvar-stored cons-composition append x100" $ nfIO $ testCompositionAppendInMVar 100
-            , bench "mvar-stored cons then final reverse x100" $ nfIO $       testConsReverseInMVar 100
-            , bench "mvar-stored cons-composition append x10000" $ nfIO $ testCompositionAppendInMVar 10000
-            , bench "mvar-stored cons then final reverse x10000" $ nfIO $       testConsReverseInMVar 10000
-            
-            , bench "storing mvar-stored cons-composition append x10" $ nfIO $ testStoreCompositionAppendInMVar 10
-            , bench "storing mvar-stored cons then final reverse x10" $ nfIO $       testStoreConsReverseInMVar 10
-            , bench "storing mvar-stored cons-composition append x100" $ nfIO $ testStoreCompositionAppendInMVar 100
-            , bench "storing mvar-stored cons then final reverse x100" $ nfIO $       testStoreConsReverseInMVar 100
-            , bench "storing mvar-stored cons-composition append x10000" $ nfIO $ testStoreCompositionAppendInMVar 10000
-            , bench "storing mvar-stored cons then final reverse x10000" $ nfIO $       testStoreConsReverseInMVar 10000
+                , bench "mvar-stored cons-composition append x10" $ nfIO $ testCompositionAppendInMVar 10
+                , bench "mvar-stored cons then final reverse x10" $ nfIO $       testConsReverseInMVar 10
+                , bench "mvar-stored cons-composition append x100" $ nfIO $ testCompositionAppendInMVar 100
+                , bench "mvar-stored cons then final reverse x100" $ nfIO $       testConsReverseInMVar 100
+                , bench "mvar-stored cons-composition append x10000" $ nfIO $ testCompositionAppendInMVar 10000
+                , bench "mvar-stored cons then final reverse x10000" $ nfIO $       testConsReverseInMVar 10000
+                
+                , bench "storing mvar-stored cons-composition append x10" $ nfIO $ testStoreCompositionAppendInMVar 10
+                , bench "storing mvar-stored cons then final reverse x10" $ nfIO $       testStoreConsReverseInMVar 10
+                , bench "storing mvar-stored cons-composition append x100" $ nfIO $ testStoreCompositionAppendInMVar 100
+                , bench "storing mvar-stored cons then final reverse x100" $ nfIO $       testStoreConsReverseInMVar 100
+                , bench "storing mvar-stored cons-composition append x10000" $ nfIO $ testStoreCompositionAppendInMVar 10000
+                , bench "storing mvar-stored cons then final reverse x10000" $ nfIO $       testStoreConsReverseInMVar 10000
+                ]
+            , bgroup "small array indexing" $
+                [ bench "index 8th list" $ nf ([(1::Int)..8] !!) 7
+                , bench "index 8th IArray" $ nf (arr8 !) 7
+                , bench "index 8th Vector" $ nf (V.unsafeIndex vec8) 7
+                , bench "index 8th MVector" $ nfIO $ (MV.unsafeRead mvec8) 7
+                -- I think this is basically MVector AFAICT
+                , bench "index 8th Primitiv MutableArray" $ nfIO $ (P.readArray parr8) 7
+                , bench "index 8th Primitiv Array" $ nf (P.indexArray iparr8) 7
+
+                , bench "index 16th list" $ nf ([(1::Int)..16] !!) 15
+                , bench "index 16th IArray" $ nf (arr16 !) 15
+                , bench "index 16th Vector" $ nf (V.unsafeIndex vec16) 15
+                , bench "index 16th MVector" $ nfIO $ (MV.unsafeRead mvec16) 15
+                , bench "index 8th Primitiv MutableArray" $ nfIO $ (P.readArray parr16) 15
+                , bench "index 8th Primitiv Array" $ nf (P.indexArray iparr16) 15
+                ]
             ]
         ]
   -- takeMVar mvWithFinalizer -- keep finalizer from actually running
