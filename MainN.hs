@@ -85,7 +85,7 @@ main = do
             --   - 4 putMVar
             -- TODO: also test with N green threads per core.
             [ bgroup ("Throughput on "++(show n)++" concurrent atomic mods") $
-                     -- just forks some threads all atomically modifying a variable:
+                -- just forks some threads all atomically modifying a variable:
                 let {-# INLINE mod_test #-}
                     mod_test = mod_test_n n
                     {-# INLINE mod_test_n #-}
@@ -94,7 +94,13 @@ main = do
                       mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n' `div` threads) modf >> putMVar done1 ()) $ zip starts dones
                       mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
 
-                 in [ bgroup "1 thread per HEC" $
+                    -- We use this payload to scale contention; on my machine
+                    -- timesN values of 1,2,3,4 run at fairly consistent: 15ns,
+                    -- 19ns, 29ns, and 37ns (note: 22.4ns for an atomicModifyIORef)
+                    {-# NOINLINE payload #-}
+                    payload timesN = (evaluate $ (foldr ($) 2 $ replicate timesN sqrt) :: IO Float)
+
+                 in [ bgroup "1 thread per HEC, full contention" $
                        [ bench "modifyMVar_" $ mod_test procs $
                           (modifyMVar_ counter_mvar (return . (+1)))
 
@@ -117,7 +123,7 @@ main = do
                         -- , bench "atomically modifyTVar' x10" $ mod_test_n (10*n) procs $
                         --     (atomically $ modifyTVar' counter_tvar ((+1))) 
                         ]
-                    , bgroup "2 threads per HEC" $
+                    , bgroup "2 threads per HEC, full contention" $
                        [ bench "modifyMVar_" $ mod_test (procs*2) $
                           (modifyMVar_ counter_mvar (return . (+1)))
 
@@ -133,37 +139,81 @@ main = do
                         , bench "incrCounter (atomic-primops)" $ mod_test (procs*2) $
                             (incrCounter 1 counter_atomic_counter)
                         ]
-                    , bgroup "4 threads per HEC" $
-                       [ bench "modifyMVar_" $ mod_test (procs*4) $
-                          (modifyMVar_ counter_mvar (return . (+1)))
+                    
+                    -- NOTE: adding more threads per-HEC at this point shows
+                    -- little difference (very bad MVar locking behavior has
+                    -- mostly disappeared)
+                    --
+                    -- test dialing back the contention:
+                    , bgroup "1 threads per HEC, 1 payload" $ 
+                       [ bench "modifyMVar_" $ mod_test (procs*1) $
+                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 1)
 
-                        , bench "modifyMVarMasked_" $ mod_test (procs*4) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 1)
                         
-                        , bench "atomicModifyIORef'" $ mod_test (procs*4) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 1)
 
-                        , bench "atomically modifyTVar'" $ mod_test (procs*4) $
-                            (atomically $ modifyTVar' counter_tvar ((+1))) 
+                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
+                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 1) 
 
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*4) $
-                            (incrCounter 1 counter_atomic_counter)
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
+                            (incrCounter 1 counter_atomic_counter >> payload 1)
                         ]
-                    , bgroup "8 threads per HEC" $
-                       [ bench "modifyMVar_" $ mod_test (procs*8) $
-                          (modifyMVar_ counter_mvar (return . (+1)))
+                    , bgroup "1 threads per HEC, 2 payload" $
+                       [ bench "modifyMVar_" $ mod_test (procs*1) $
+                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 2)
 
-                        , bench "modifyMVarMasked_" $ mod_test (procs*8) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)))
+                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 2)
                         
-                        , bench "atomicModifyIORef'" $ mod_test (procs*8) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 2)
 
-                        , bench "atomically modifyTVar'" $ mod_test (procs*8) $
-                            (atomically $ modifyTVar' counter_tvar ((+1))) 
+                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
+                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 2) 
 
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*8) $
-                            (incrCounter 1 counter_atomic_counter)
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
+                            (incrCounter 1 counter_atomic_counter >> payload 2)
+                        ]
+                    , bgroup "1 threads per HEC, 3 payload" $
+                       [ bench "modifyMVar_" $ mod_test (procs*1) $
+                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 3)
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 3)
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 3)
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
+                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 3) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
+                            (incrCounter 1 counter_atomic_counter >> payload 3)
+                        ]
+                    , bgroup "1 threads per HEC, 4 payload" $
+                       [ bench "modifyMVar_" $ mod_test (procs*1) $
+                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 4)
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 4)
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 4)
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
+                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 4) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
+                            (incrCounter 1 counter_atomic_counter >> payload 4)
+                        ]
+                    , bgroup "Test Payload" $
+                        [ bench "payload x1" $ payload 1
+                        , bench "payload x2" $ payload 2
+                        , bench "payload x3" $ payload 3
+                        , bench "payload x4" $ payload 4
                         ]
                     ]
             , bgroup "Misc" $
@@ -190,6 +240,7 @@ main = do
         , bgroup "Channel implementations" $
             [ bgroup ("Operations on "++(show n)++" messages") $
                 [ bgroup "For scale" $
+                      -- For TQueue style chans, test the cost of reverse
                       [ bench "reverse [1..n]" $ nf (\n'-> reverse [1..n']) n
                       , bench "reverse replicate n 1" $ nf (\n'-> replicate n' (1::Int)) n
                       ]
