@@ -100,6 +100,23 @@ main = do
                     {-# NOINLINE payload #-}
                     payload timesN = (evaluate $ (foldr ($) 2 $ replicate timesN sqrt) :: IO Float)
 
+                    varGroupPayload perProc numPL = [
+                         bench "modifyMVar_" $ mod_test (procs*perProc) $
+                          (modifyMVar_ counter_mvar (return . (+1)) >> payload numPL)
+
+                        , bench "modifyMVarMasked_" $ mod_test (procs*perProc) $
+                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload numPL)
+                        
+                        , bench "atomicModifyIORef'" $ mod_test (procs*perProc) $
+                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload numPL)
+
+                        , bench "atomically modifyTVar'" $ mod_test (procs*perProc) $
+                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload numPL) 
+
+                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*perProc) $
+                            (incrCounter 1 counter_atomic_counter >> payload numPL)
+                        ]
+
                  in [ bgroup "1 thread per HEC, full contention" $
                        [ bench "modifyMVar_" $ mod_test procs $
                           (modifyMVar_ counter_mvar (return . (+1)))
@@ -146,74 +163,40 @@ main = do
                     --
                     -- test dialing back the contention:
                     , bgroup "1 threads per HEC, 1 payload" $ 
-                       [ bench "modifyMVar_" $ mod_test (procs*1) $
-                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 1)
-
-                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 1)
-                        
-                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 1)
-
-                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
-                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 1) 
-
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
-                            (incrCounter 1 counter_atomic_counter >> payload 1)
-                        ]
+                        varGroupPayload 1 1
                     , bgroup "1 threads per HEC, 2 payload" $
-                       [ bench "modifyMVar_" $ mod_test (procs*1) $
-                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 2)
-
-                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 2)
-                        
-                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 2)
-
-                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
-                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 2) 
-
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
-                            (incrCounter 1 counter_atomic_counter >> payload 2)
-                        ]
-                    , bgroup "1 threads per HEC, 3 payload" $
-                       [ bench "modifyMVar_" $ mod_test (procs*1) $
-                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 3)
-
-                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 3)
-                        
-                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 3)
-
-                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
-                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 3) 
-
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
-                            (incrCounter 1 counter_atomic_counter >> payload 3)
-                        ]
+                        varGroupPayload 1 2
                     , bgroup "1 threads per HEC, 4 payload" $
-                       [ bench "modifyMVar_" $ mod_test (procs*1) $
-                          (modifyMVar_ counter_mvar (return . (+1)) >> payload 4)
+                        varGroupPayload 1 4
+                    , bgroup "1 threads per HEC, 8 payload" $
+                        varGroupPayload 1 8
 
-                        , bench "modifyMVarMasked_" $ mod_test (procs*1) $
-                            (modifyMVarMasked_ counter_mvar (return . (+1)) >> payload 4)
-                        
-                        , bench "atomicModifyIORef'" $ mod_test (procs*1) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ) >> payload 4)
+                    -- this is an attempt to see if a somewhat random delay can
+                    -- get rid of (some or all) the very slow runs; hypothesis
+                    -- being that those runs get into some bad harmonics and
+                    -- contention is slow to resolve.
+                    , bgroup "1 thread per HEC, scattered payloads with IORefs" $
+                        let benchRandPayloadIORef evry pyld = 
+                                bench ("atomicModifyIORef' "++(show evry)++" "++(show pyld)) $ 
+                                  mod_test procs $
+                                    (atomicModifyIORef' counter_ioref (\x-> (x+1,x) ) 
+                                     >>= \x-> if x `mod` evry == 0 then payload pyld else return 1)
+                         in [ benchRandPayloadIORef 2 1
+                            , benchRandPayloadIORef 2 4
+                            , benchRandPayloadIORef 2 16
+                            , benchRandPayloadIORef 8 1
+                            , benchRandPayloadIORef 8 4
+                            , benchRandPayloadIORef 8 16
+                            , benchRandPayloadIORef 32 1
+                            , benchRandPayloadIORef 32 4
+                            , benchRandPayloadIORef 32 16
+                            ]
 
-                        , bench "atomically modifyTVar'" $ mod_test (procs*1) $
-                            ((atomically $ modifyTVar' counter_tvar ((+1))) >> payload 4) 
-
-                        , bench "incrCounter (atomic-primops)" $ mod_test (procs*1) $
-                            (incrCounter 1 counter_atomic_counter >> payload 4)
-                        ]
                     , bgroup "Test Payload" $
                         [ bench "payload x1" $ payload 1
                         , bench "payload x2" $ payload 2
-                        , bench "payload x3" $ payload 3
                         , bench "payload x4" $ payload 4
+                        , bench "payload x8" $ payload 8
                         ]
                     ]
             , bgroup "Misc" $
@@ -221,8 +204,11 @@ main = do
                 -- it represents a useful technique for reducing contention:
                 [ bench "contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORef n
                 , bench "read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORef n
-                , bench "Higher contention, contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORefHiC n
-                , bench "Higher contention, read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORefHiC n
+              -- NOT RELEVANT:
+                -- , bench "Higher contention, contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORefHiC n
+                -- , bench "Higher contention, read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORefHiC n
+                , bench "contentious atomic-maybe-modify TVar" $ atomicMaybeModifyTVar n
+                , bench "read first, then maybe contentious atomic-maybe-modify TVar" $ readMaybeAtomicModifyTVar n
 
                 -- we should expect these to be the same:
                 , bench "reads against atomicModifyIORefs" $ readsAgainstAtomicModifyIORefs n

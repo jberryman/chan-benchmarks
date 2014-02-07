@@ -275,7 +275,42 @@ atomicMaybeModifyIORef n = do
     waitBoth w1 w2
     return ()
 
+readMaybeAtomicModifyTVar :: Int -> IO ()
+readMaybeAtomicModifyTVar n = do
+    counter <- newTVarIO 0
+    stack1 <- newTVarIO [] -- non-contentious work done on these:
+    stack2 <- newTVarIO []
+    let op stck = do cnt <- readTVarIO counter
+                     atomically $ modifyTVar stck (\st-> cnt:st)
+                     cnt' <- readTVarIO counter
+                     if cnt' == cnt
+                         then atomically $ modifyTVar counter (\cnt1-> if cnt1 == cnt then cnt+1 else cnt1)
+                         else return ()
+
+    w1 <- async $ replicateM_ n $ op stack1
+    w2 <- async $ replicateM_ n $ op stack2
+    waitBoth w1 w2
+    return ()
+
+atomicMaybeModifyTVar :: Int -> IO ()
+atomicMaybeModifyTVar n = do
+    counter <- newTVarIO 0
+    stack1 <- newTVarIO [] -- non-contentious work done on these:
+    stack2 <- newTVarIO []
+    let op stck = do cnt <- readTVarIO counter
+                     atomically $ modifyTVar stck (\st-> cnt:st)
+                     atomically $ modifyTVar counter (\cnt1-> if cnt1 == cnt then cnt+1 else cnt1)
+
+    w1 <- async $ replicateM_ n $ op stack1
+    w2 <- async $ replicateM_ n $ op stack2
+    waitBoth w1 w2
+    return ()
+
 -- variants with a less realistic payload, simulating higher contention with more writers:
+{-
+-- NOTE: REMOVING: this isn't representative of the behavior of multiple
+-- threads, each with a sizable payload between read and atomicModifyIORef,
+-- which is what we care about.
 readMaybeAtomicModifyIORefHiC :: Int -> IO ()
 readMaybeAtomicModifyIORefHiC n = do
     counter <- newIORef 0
@@ -302,7 +337,7 @@ atomicMaybeModifyIORefHiC n = do
     w2 <- async $ replicateM_ n $ op 
     waitBoth w1 w2
     return ()
-
+-}
 
 
 -- Do atomicModifyIORefs block readers?
