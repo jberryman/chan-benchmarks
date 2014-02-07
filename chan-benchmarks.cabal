@@ -28,8 +28,7 @@ executable bench-single
                      , mwc-random
                      , criterion
                      , primitive
-                     -- for kicks (you might have to get this from Github):
-                     , atomic-primops == 0.4
+                     , atomic-primops == 0.6
             -- other chans:
                      , chan-split-fast
                      , split-channel
@@ -62,7 +61,7 @@ executable bench-multi
                      , async
                      , criterion
                      , primitive
-                     , atomic-primops == 0.4
+                     , atomic-primops == 0.6
             -- other chans:
                      , chan-split-fast
                      , split-channel
@@ -87,7 +86,7 @@ executable test-atomics
   build-depends:       base >=4.6 && <4.7
                      , stm
                      , async
-                     , atomic-primops == 0.4
+                     , atomic-primops == 0.6
 
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
   ghc-options: -fforce-recomp
@@ -106,8 +105,7 @@ executable experiment-mvar-fairness
                      , mwc-random
                      , criterion
                      , primitive
-                     -- for kicks (you might have to get this from Github):
-                     , atomic-primops == 0.4
+                     , atomic-primops == 0.6
                      , chan-split-fast
                      , split-channel
   
@@ -125,8 +123,7 @@ executable experiment-tvar-interleaving
                      , mwc-random
                      , criterion
                      , primitive
-                     -- for kicks (you might have to get this from Github):
-                     , atomic-primops == 0.4
+                     , atomic-primops == 0.6
                      , chan-split-fast
                      , split-channel
   

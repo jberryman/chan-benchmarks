@@ -2,16 +2,18 @@ import Control.Concurrent
 import Data.Atomics.Counter
 import Control.Monad
 import GHC.Conc
+import Control.Exception(evaluate)
+
 
 main = do
     n0 <- test newCounter readCounter incrCounter
-    n1 <- test newMVar takeMVar (\n v-> modifyMVar_ v (return . (+1)) )
+    n1 <- test newMVar takeMVar (\n v-> modifyMVar_ v (evaluate . (+1)) )
     if n0 /= n1
         then putStrLn $ "Counter broken: expecting "++(show n1)++" got "++(show n0)
         else putStrLn "OK"
 
 test new read incr = do
-  let n = 100000
+  let n = 1000000
   procs <- getNumCapabilities
 
   counter <- new (1::Int)
