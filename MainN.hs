@@ -24,6 +24,7 @@ import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
+import Data.Atomics
 
 import GHC.Conc
 
@@ -115,6 +116,10 @@ main = do
 
                         , bench "incrCounter (atomic-primops)" $ mod_test (procs*perProc) $
                             (incrCounter 1 counter_atomic_counter >> payload numPL)
+                        
+                        , bench "atomicModifyIORefCAS (atomic-primops)" $ mod_test (procs*perProc) $
+                            (atomicModifyIORefCAS counter_ioref (\x-> (x+1,()) ) >> payload numPL)
+
                         ]
 
                  in [ bgroup "1 thread per HEC, full contention" $
@@ -133,6 +138,9 @@ main = do
                         , bench "incrCounter (atomic-primops)" $ mod_test procs $
                             (incrCounter 1 counter_atomic_counter)
                         
+                        , bench "atomicModifyIORefCAS (atomic-primops)" $ mod_test procs $
+                            (atomicModifyIORefCAS counter_ioref (\x-> (x+1,()) ))
+                        
                         -- I want to compare these with the same results above;
                         -- see also TVarExperiment:
                         -- , bench "atomicModifyIORef' x10" $ mod_test_n (10*n) procs $
@@ -147,16 +155,24 @@ main = do
                         , bench "modifyMVarMasked_" $ mod_test (procs*2) $
                             (modifyMVarMasked_ counter_mvar (return . (+1)))
                         
-                        , bench "atomicModifyIORef'" $ mod_test (procs*2) $
-                            (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
+                        -- WTF! This is suddenly giving me a stack overflow....
+                        -- , bench "atomicModifyIORef'" $ mod_test (procs*2) $
+                        --     (atomicModifyIORef' counter_ioref (\x-> (x+1,()) ))
 
                         , bench "atomically modifyTVar'" $ mod_test (procs*2) $
                             (atomically $ modifyTVar' counter_tvar ((+1))) 
 
                         , bench "incrCounter (atomic-primops)" $ mod_test (procs*2) $
                             (incrCounter 1 counter_atomic_counter)
+                        
+                        , bench "atomicModifyIORefCAS (atomic-primops)" $ mod_test (procs*2) $
+                            (atomicModifyIORefCAS counter_ioref (\x-> (x+1,()) ))
+
                         ]
-                    
+                   
+                   {- COMMENTING, since the atomicModifyIORef' below is *again*
+                      causing stack overflow for no apparent reason TODO why?
+
                     -- NOTE: adding more threads per-HEC at this point shows
                     -- little difference (very bad MVar locking behavior has
                     -- mostly disappeared)
@@ -198,12 +214,14 @@ main = do
                         , bench "payload x4" $ payload 4
                         , bench "payload x8" $ payload 8
                         ]
+                     -}
                     ]
             , bgroup "Misc" $
                 -- If the second shows some benefit on just two threads, then 
                 -- it represents a useful technique for reducing contention:
                 [ bench "contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORef n
                 , bench "read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORef n
+                , bench "readForCAS, then CAS (atomic-primops)" $ readMaybeCAS n
               -- NOT RELEVANT:
                 -- , bench "Higher contention, contentious atomic-maybe-modify IORef" $ atomicMaybeModifyIORefHiC n
                 -- , bench "Higher contention, read first, then maybe contentious atomic-maybe-modify IORef" $ readMaybeAtomicModifyIORefHiC n

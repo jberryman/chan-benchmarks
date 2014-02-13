@@ -23,6 +23,7 @@ import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
+import Data.Atomics
 import System.Random
 import System.Random.MWC
 
@@ -176,6 +177,9 @@ main = do
                 , bench "modifyIORef' (i.e. readIORef + writeIORef)" (modifyIORef' ior $ const '2')
                 , bench "atomicModifyIORef' (i.e. (in GHC) strict atomicModifyMutVar)" $ (atomicModifyIORef' ior $ const ('3','3'))
                 , bench "atomicModifyIORef (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef ior $ const ('3','3'))
+                
+                , bench "atomicModifyIORefCAS (i.e. atomic-primops CAS loop)" $ (atomicModifyIORefCAS ior $ const ('4','4'))
+
                 ]
             , bgroup "MVar" $
                 [ bench "newEmptyMVar" $ newEmptyMVar

@@ -23,6 +23,8 @@ import qualified "split-channel" Control.Concurrent.Chan.Split as SC
 import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 
+import Data.Atomics
+
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions, and have now changed quite a bit.
 --
@@ -255,6 +257,23 @@ readMaybeAtomicModifyIORef n = do
                      if cnt' == cnt
                          then atomicModifyIORef' counter (\cnt1-> (if cnt1 == cnt then cnt+1 else cnt1, ()))
                          else return ()
+
+    w1 <- async $ replicateM_ n $ op stack1
+    w2 <- async $ replicateM_ n $ op stack2
+    waitBoth w1 w2
+    return ()
+
+readMaybeCAS :: Int -> IO ()
+readMaybeCAS n = do
+    counter <- newIORef 0
+    stack1 <- newIORef [] -- non-contentious work done on these:
+    stack2 <- newIORef []
+    let op stck = do cntTicket <- readForCAS counter
+                     let cnt = peekTicket cntTicket
+                     atomicModifyIORef' stck (\st-> (cnt:st,()))
+                     incrCnt <- evaluate (cnt + 1)
+                     (weIncremented, _) <- casIORef counter cntTicket incrCnt
+                     return ()
 
     w1 <- async $ replicateM_ n $ op stack1
     w2 <- async $ replicateM_ n $ op stack2
