@@ -251,21 +251,29 @@ main = do
                 , bench "storing mvar-stored cons-composition append x10000" $ nfIO $ testStoreCompositionAppendInMVar 10000
                 , bench "storing mvar-stored cons then final reverse x10000" $ nfIO $       testStoreConsReverseInMVar 10000
                 ]
-            , bgroup "small array indexing" $
-                [ bench "index 8th list" $ nf ([(1::Int)..8] !!) 7
-                , bench "index 8th IArray" $ nf (arr8 !) 7
-                , bench "index 8th Vector" $ nf (V.unsafeIndex vec8) 7
-                , bench "index 8th MVector" $ nfIO $ (MV.unsafeRead mvec8) 7
-                -- I think this is basically MVector AFAICT
-                , bench "index 8th Primitiv MutableArray" $ nfIO $ (P.readArray parr8) 7
-                , bench "index 8th Primitiv Array" $ nf (P.indexArray iparr8) 7
+            , bgroup "arrays" $
+                [ bgroup "indexing" $ 
+                    [ bench "index 8th list" $ nf ([(1::Int)..8] !!) 7
+                    , bench "index 8th IArray" $ nf (arr8 !) 7
+                    , bench "index 8th Vector" $ nf (V.unsafeIndex vec8) 7
+                    , bench "index 8th MVector" $ nfIO $ (MV.unsafeRead mvec8) 7
+                    -- I think this is basically MVector AFAICT
+                    , bench "index 8th Primitiv MutableArray" $ nfIO $ (P.readArray parr8) 7
+                    , bench "index 8th Primitiv Array" $ nf (P.indexArray iparr8) 7
 
-                , bench "index 16th list" $ nf ([(1::Int)..16] !!) 15
-                , bench "index 16th IArray" $ nf (arr16 !) 15
-                , bench "index 16th Vector" $ nf (V.unsafeIndex vec16) 15
-                , bench "index 16th MVector" $ nfIO $ (MV.unsafeRead mvec16) 15
-                , bench "index 8th Primitiv MutableArray" $ nfIO $ (P.readArray parr16) 15
-                , bench "index 8th Primitiv Array" $ nf (P.indexArray iparr16) 15
+                    , bench "index 16th list" $ nf ([(1::Int)..16] !!) 15
+                    , bench "index 16th IArray" $ nf (arr16 !) 15
+                    , bench "index 16th Vector" $ nf (V.unsafeIndex vec16) 15
+                    , bench "index 16th MVector" $ nfIO $ (MV.unsafeRead mvec16) 15
+                    , bench "index 16th Primitiv MutableArray" $ nfIO $ (P.readArray parr16) 15
+                    , bench "index 16th Primitiv Array" $ nf (P.indexArray iparr16) 15
+
+                    , bench "readArrayElem for CAS (MutableArray)" $ nfIO (fmap peekTicket $ readArrayElem parr16 15 )
+                    ]
+                , bgroup "writing" $
+                    [ bench "write MutableArray" $ (P.writeArray parr16 15 1 :: IO ())
+                    , bench "CAS MutableArray (along with a readArrayElem)" (readArrayElem parr16 15 >>= (\t-> casArrayElem parr16 15 t 2))
+                    ]
                 ]
             ]
         ]
