@@ -24,13 +24,13 @@ import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 
 import Data.Atomics
+import Data.Concurrent.Queue.MichaelScott
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions, and have now changed quite a bit.
 --
 -- The original used CPP to avoid code duplication while also ensuring GHC
 -- optimized the code in a realistic fashion. Here we just copy paste.
-
 
 
 runtestChan1, runtestChan2 :: Int -> IO ()
@@ -53,6 +53,33 @@ runtestChanAsync writers readers n = do
   rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ readChan c
   senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ writeChan c ()
   mapM_ wait rcvrs
+
+-- ----------
+-- from "lockfree-queue"
+runtestLockfreeQueue1, runtestLockfreeQueue2 :: Int -> IO ()
+runtestLockfreeQueue1 n = do
+  c <- newQ
+  replicateM_ n $ pushL c ()
+  replicateM_ n $ readR c
+
+runtestLockfreeQueue2 n = do
+  c <- newQ
+  let n1000 = n `quot` 1000
+  replicateM_ 1000 $ do
+    replicateM_ n1000 $ pushL c ()
+    replicateM_ n1000 $ readR c
+
+runtestLockfreeQueueAsync :: Int -> Int -> Int -> IO ()
+runtestLockfreeQueueAsync writers readers n = do
+  let nNice = n - rem n (lcm writers readers)
+  c <- newQ
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ readR c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ pushL c ()
+  mapM_ wait rcvrs
+
+-- a busy-blocking read:
+readR :: LinkedQueue a -> IO a
+readR q = tryPopR q >>= maybe (readR q) return
 
 -- ----------
 

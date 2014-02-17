@@ -35,6 +35,8 @@ import qualified Data.Primitive.Array as P
 import System.Time(getClockTime)
 import Data.Time.Clock.POSIX
 
+import Data.Concurrent.Queue.MichaelScott
+
 import Benchmarks
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
@@ -66,6 +68,7 @@ main = do
   atomic_counter <- newCounter 0
 
   -- to be left empty at emd of each test:
+  lockfreeQEmpty <- newQ
   chanEmpty <- newChan
   tchanEmpty <- newTChanIO
   tqueueEmpty <- newTQueueIO
@@ -99,6 +102,7 @@ main = do
                 , bench "TBQueue" (atomically (writeTBQueue tbqueueEmpty () >>  readTBQueue tbqueueEmpty))
                 , bench "chan-split-fast" (S.writeChan fastEmptyI () >> S.readChan fastEmptyO)
                 , bench "split-channel" (SC.send splitchannelEmptyI () >> SC.receive splitchannelEmptyO)
+                , bench "lockfree-queue" (pushL lockfreeQEmpty () >> readR lockfreeQEmpty)
                 ]
             , bgroup ("Single-thread throughput with "++show n++" messages") $
                 -- some pure operations we'd like a rough measurement for, e.g.
@@ -133,6 +137,10 @@ main = do
                 , bgroup "split-channel" $
                       [ bench "sequential write all then read all" $ runtestSplitChannel1 n
                       , bench "repeated write some, read some" $ runtestSplitChannel2 n
+                      ]
+                , bgroup "lockfree-queue" $
+                      [ bench "sequential write all then read all" $ runtestLockfreeQueue1 n
+                      , bench "repeated write some, read some" $ runtestLockfreeQueue2 n
                       ]
                 ]
             ]

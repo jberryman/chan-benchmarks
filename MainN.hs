@@ -26,6 +26,8 @@ import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
 import Data.Atomics
 
+import Data.Concurrent.Queue.MichaelScott
+
 import GHC.Conc
 
 import Benchmarks
@@ -72,6 +74,7 @@ main = do
   fill_empty_tbqueue <- newTBQueueIO maxBound
   (fill_empty_fastI, fill_empty_fastO) <- S.newSplitChan
   (fill_empty_splitchannelI, fill_empty_splitchannelO) <- SC.new
+  fill_empty_lockfree <- newQ
 
   defaultMain $
         [ bgroup "Var primitives" $
@@ -347,6 +350,19 @@ main = do
                           mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (SC.receive fill_empty_splitchannelO) >> putMVar done1 ()) $ zip starts dones
                           mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
                       , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
+                      ]
+                -- michael-scott queue implementation, using atomic-primops
+                , bgroup "lockfree-queue" $
+                      [ bench "async 1 writer 1 readers" $ runtestLockfreeQueueAsync 1 1 n
+                      , bench ("async "++(show procs)++" writers") $ do
+                          dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
+                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (pushL fill_empty_lockfree ()) >> putMVar done1 ()) $ zip starts dones
+                          mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
+                      , bench ("async "++(show procs)++" readers") $ do
+                          dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
+                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (readR fill_empty_lockfree) >> putMVar done1 ()) $ zip starts dones
+                          mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
+                      , bench "contention: async 100 writers 100 readers" $ runtestLockfreeQueueAsync 100 100 n
                       ]
                 ]
             ]
