@@ -26,7 +26,7 @@ import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
 import Data.Atomics
 
-import Data.Concurrent.Queue.MichaelScott
+import qualified Data.Concurrent.Queue.MichaelScott as MS
 
 import GHC.Conc
 
@@ -74,7 +74,7 @@ main = do
   fill_empty_tbqueue <- newTBQueueIO maxBound
   (fill_empty_fastI, fill_empty_fastO) <- S.newSplitChan
   (fill_empty_splitchannelI, fill_empty_splitchannelO) <- SC.new
-  fill_empty_lockfree <- newQ
+  fill_empty_lockfree <- MS.newQ
 
   defaultMain $
         [ bgroup "Var primitives" $
@@ -356,13 +356,18 @@ main = do
                       [ bench "async 1 writer 1 readers" $ runtestLockfreeQueueAsync 1 1 n
                       , bench ("async "++(show procs)++" writers") $ do
                           dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (pushL fill_empty_lockfree ()) >> putMVar done1 ()) $ zip starts dones
+                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (MS.pushL fill_empty_lockfree ()) >> putMVar done1 ()) $ zip starts dones
                           mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
                       , bench ("async "++(show procs)++" readers") $ do
                           dones <- replicateM procs newEmptyMVar ; starts <- replicateM procs newEmptyMVar
-                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (readR fill_empty_lockfree) >> putMVar done1 ()) $ zip starts dones
+                          mapM_ (\(start1,done1)-> forkIO $ takeMVar start1 >> replicateM_ (n `div` procs) (msreadR fill_empty_lockfree) >> putMVar done1 ()) $ zip starts dones
                           mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
                       , bench "contention: async 100 writers 100 readers" $ runtestLockfreeQueueAsync 100 100 n
+                      ]
+                -- Chase / Lev work-stealing queue
+                -- NOTE: we can have at most 1 writer (pushL); not a general-purpose queue, so don't do more tests
+                , bgroup "chaselev-dequeue" $
+                      [ bench "async 1 writer 1 readers" $ runtestChaseLevQueueAsync_1_1 n
                       ]
                 ]
             ]

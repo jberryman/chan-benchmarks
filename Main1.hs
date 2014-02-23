@@ -31,11 +31,14 @@ import Data.Array.IArray
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic.Mutable as MV
 import qualified Data.Primitive.Array as P
+-- TODO fix imports above
+import qualified Data.Vector.Mutable as MVec
 
 import System.Time(getClockTime)
 import Data.Time.Clock.POSIX
 
-import Data.Concurrent.Queue.MichaelScott
+import qualified Data.Concurrent.Queue.MichaelScott as MS
+import qualified Data.Concurrent.Deque.ChaseLev as CL
 
 import Benchmarks
 
@@ -68,7 +71,8 @@ main = do
   atomic_counter <- newCounter 0
 
   -- to be left empty at emd of each test:
-  lockfreeQEmpty <- newQ
+  lockfreeQEmpty <- MS.newQ
+  chaselevQEmpty <- CL.newQ
   chanEmpty <- newChan
   tchanEmpty <- newTChanIO
   tqueueEmpty <- newTQueueIO
@@ -102,7 +106,8 @@ main = do
                 , bench "TBQueue" (atomically (writeTBQueue tbqueueEmpty () >>  readTBQueue tbqueueEmpty))
                 , bench "chan-split-fast" (S.writeChan fastEmptyI () >> S.readChan fastEmptyO)
                 , bench "split-channel" (SC.send splitchannelEmptyI () >> SC.receive splitchannelEmptyO)
-                , bench "lockfree-queue" (pushL lockfreeQEmpty () >> readR lockfreeQEmpty)
+                , bench "lockfree-queue" (MS.pushL lockfreeQEmpty () >> msreadR lockfreeQEmpty)
+                , bench "chaselev-dequeue" (CL.pushL chaselevQEmpty () >> clreadR chaselevQEmpty)
                 ]
             , bgroup ("Single-thread throughput with "++show n++" messages") $
                 -- some pure operations we'd like a rough measurement for, e.g.
@@ -141,6 +146,10 @@ main = do
                 , bgroup "lockfree-queue" $
                       [ bench "sequential write all then read all" $ runtestLockfreeQueue1 n
                       , bench "repeated write some, read some" $ runtestLockfreeQueue2 n
+                      ]
+                , bgroup "chaselev-dequeue" $
+                      [ bench "sequential write all then read all" $ runtestChaseLevQueue1 n
+                      , bench "repeated write some, read some" $ runtestChaseLevQueue2 n
                       ]
                 ]
             ]
@@ -226,7 +235,13 @@ main = do
         , bgroup "Misc" $
             -- of interest for TQueue style approach
             [ bgroup "cons and reverse" $ 
-                [ bench "pure cons-composition append x10" $ nf testCompositionAppend 10
+                [ bench "cons" $ nf (:[]) True
+                , bench "pure unrolled cons then final reverse x10" $       nf testConsUnrolledReverse 10
+                , bench "pure cons then final reverse x10" $       nf testConsReverse 10
+                , bench "pure unrolled cons then final reverse x5" $       nf testConsUnrolledReverse 5
+                , bench "pure cons then final reverse x5" $       nf testConsReverse 5
+
+                , bench "pure cons-composition append x10" $ nf testCompositionAppend 10
                 , bench "pure cons then final reverse x10" $       nf testConsReverse 10
                 , bench "pure cons-composition append x100" $ nf testCompositionAppend 100
                 , bench "pure cons then final reverse x100" $       nf testConsReverse 100
@@ -273,6 +288,14 @@ main = do
                 , bgroup "writing" $
                     [ bench "write MutableArray" $ (P.writeArray parr16 15 1 :: IO ())
                     , bench "CAS MutableArray (along with a readArrayElem)" (readArrayElem parr16 15 >>= (\t-> casArrayElem parr16 15 t 2))
+                    ]
+                , bgroup "creating" $
+                    [ bench "new MVector 8" $ (MVec.new 8 :: IO (MVec.IOVector ()))
+                    , bench "new MVector 32" $ (MVec.new 32 :: IO (MVec.IOVector ()))
+                    , bench "unsafeNew MVector 8" $ (MVec.unsafeNew 8 :: IO (MVec.IOVector ()))
+                    , bench "unsafeNew MVector 32" $ (MVec.unsafeNew 32 :: IO (MVec.IOVector ()))
+                    , bench "new MutableArray 8" $ (P.newArray 8 () :: IO (P.MutableArray (PrimState IO) ()))
+                    , bench "new MutableArray 32" $ (P.newArray 32 () :: IO (P.MutableArray (PrimState IO) ()))
                     ]
                 ]
             ]

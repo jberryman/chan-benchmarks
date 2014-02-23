@@ -35,8 +35,7 @@ executable bench-single
                      , lockfree-queue == 0.2.3
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
-              --TODO (lock-free queues, maybe just the write-all-read-all test for now):
-                   --, chaselev-deque
+                     , chaselev-deque
 
                      -- arrays:
                      , array
@@ -68,8 +67,7 @@ executable bench-multi
                      , lockfree-queue == 0.2.3
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
-              --TODO (lock-free queues, maybe just the write-all-read-all test for now):
-                   --, chaselev-deque
+                     , chaselev-deque
 
   -- We fix this to 2 cores, so that we can be a little less careful about how
   -- we write and interpret our tests.

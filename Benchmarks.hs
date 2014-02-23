@@ -24,7 +24,9 @@ import Data.Primitive.MutVar
 import Control.Monad.Primitive(PrimState)
 
 import Data.Atomics
-import Data.Concurrent.Queue.MichaelScott
+
+import qualified Data.Concurrent.Queue.MichaelScott as MS
+import qualified Data.Concurrent.Deque.ChaseLev as CL
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions, and have now changed quite a bit.
@@ -58,28 +60,59 @@ runtestChanAsync writers readers n = do
 -- from "lockfree-queue"
 runtestLockfreeQueue1, runtestLockfreeQueue2 :: Int -> IO ()
 runtestLockfreeQueue1 n = do
-  c <- newQ
-  replicateM_ n $ pushL c ()
-  replicateM_ n $ readR c
+  c <- MS.newQ
+  replicateM_ n $ MS.pushL c ()
+  replicateM_ n $ msreadR c
 
 runtestLockfreeQueue2 n = do
-  c <- newQ
+  c <- MS.newQ
   let n1000 = n `quot` 1000
   replicateM_ 1000 $ do
-    replicateM_ n1000 $ pushL c ()
-    replicateM_ n1000 $ readR c
+    replicateM_ n1000 $ MS.pushL c ()
+    replicateM_ n1000 $ msreadR c
 
 runtestLockfreeQueueAsync :: Int -> Int -> Int -> IO ()
 runtestLockfreeQueueAsync writers readers n = do
   let nNice = n - rem n (lcm writers readers)
-  c <- newQ
-  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ readR c
-  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ pushL c ()
+  c <- MS.newQ
+  rcvrs <- replicateM readers $ async $ replicateM_ (nNice `quot` readers) $ msreadR c
+  senders <- replicateM writers $ async $ replicateM_ (nNice `quot` writers) $ MS.pushL c ()
   mapM_ wait rcvrs
 
 -- a busy-blocking read:
-readR :: LinkedQueue a -> IO a
-readR q = tryPopR q >>= maybe (readR q) return
+msreadR :: MS.LinkedQueue a -> IO a
+msreadR q = MS.tryPopR q >>= maybe (msreadR q) return
+
+
+-- ----------
+-- from "chaselev-dequeue"
+-- NOTE: this is generally to get a sense of how the techniques used perform;
+--       this is not a general-purpose concurrent FIFO queue.
+runtestChaseLevQueue1, runtestChaseLevQueue2 :: Int -> IO ()
+runtestChaseLevQueue1 n = do
+  c <- CL.newQ
+  replicateM_ n $ CL.pushL c ()
+  replicateM_ n $ clreadR c
+
+runtestChaseLevQueue2 n = do
+  c <- CL.newQ
+  let n1000 = n `quot` 1000
+  replicateM_ 1000 $ do
+    replicateM_ n1000 $ CL.pushL c ()
+    replicateM_ n1000 $ clreadR c
+
+-- One reader / one writer (we can have at most one writer safely); copy-pasta
+runtestChaseLevQueueAsync_1_1 :: Int -> IO ()
+runtestChaseLevQueueAsync_1_1 n = do
+  let nNice = n - rem n (lcm 1 1)
+  c <- CL.newQ
+  rcvrs <- replicateM 1 $ async $ replicateM_ (nNice `quot` 1) $ clreadR c
+  senders <- replicateM 1 $ async $ replicateM_ (nNice `quot` 1) $ CL.pushL c ()
+  mapM_ wait rcvrs
+
+-- a busy-blocking read:
+clreadR :: CL.ChaseLevDeque a -> IO a
+clreadR q = CL.tryPopR q >>= maybe (clreadR q) return
 
 -- ----------
 
@@ -224,6 +257,23 @@ testConsReverse :: Int -> [Int]
 testConsReverse n = reverse $ go [1..n] [] where 
     go [] as = as
     go (a:xs) as = go xs (a:as)
+
+-- test an optimization for small writer dequeues? what about branch prediction's effects on this test?
+-- LITTLE BENEFIT
+testConsUnrolledReverse :: Int -> [Int]
+testConsUnrolledReverse n = rev [] $ go [1..n] [] where 
+    go [] as = as
+    go (a:xs) as = go xs (a:as)
+
+    rev a [z,y,x,w,v,u,t] = t:u:v:w:x:y:z:a
+    rev a [z,y,x,w,v,u] = u:v:w:x:y:z:a
+    rev a [z,y,x,w,v] = v:w:x:y:z:a
+    rev a [z,y,x,w] = w:x:y:z:a
+    rev a [z,y,x] = x:y:z:a
+    rev a [z,y] = y:z:a
+    rev a [z] = z:a
+    rev a []     = a
+    rev a (x:xs) = rev xs (x:a)
 
 -- This is more realistic, eliminating any benefits from inlining and rewriting
 -- we might get from above
