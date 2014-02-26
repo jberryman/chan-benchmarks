@@ -30,7 +30,8 @@ import System.Random.MWC
 import Data.Array.IArray
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic.Mutable as MV
-import qualified Data.Primitive.Array as P
+import qualified Data.Vector.Unboxed.Mutable as UMV
+import qualified Data.Primitive as P
 -- TODO fix imports above
 import qualified Data.Vector.Mutable as MVec
 
@@ -94,6 +95,11 @@ main = do
   parr16 <- P.newArray 16 (0::Int)
   iparr8 <- ((P.newArray 8 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
   iparr16 <- ((P.newArray 16 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
+
+  ba16 <- (P.newByteArray (16 * P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+  forM_ [0..15] $ \i-> P.writeByteArray ba16 i (0::Int)
+  umvvec16 <- UMV.new 16 :: IO (UMV.IOVector Int)
+  UMV.set umvvec16 0 :: IO ()
 
   defaultMain $
         [ bgroup "Channel implementations" $
@@ -284,18 +290,27 @@ main = do
                     , bench "index 16th Primitiv Array" $ nf (P.indexArray iparr16) 15
 
                     , bench "readArrayElem for CAS (MutableArray)" $ nfIO (fmap peekTicket $ readArrayElem parr16 15 )
+                    , bench "readByteArray (MutableByteArray, usable for CAS)" $ nfIO (P.readByteArray ba16 15 :: IO Int)
+                    , bench "read Mutable Unboxed Vector" $ (UMV.read umvvec16 15 :: IO Int)
                     ]
                 , bgroup "writing" $
                     [ bench "write MutableArray" $ (P.writeArray parr16 15 1 :: IO ())
                     , bench "CAS MutableArray (along with a readArrayElem)" (readArrayElem parr16 15 >>= (\t-> casArrayElem parr16 15 t 2))
+                    , bench "write MutableByteArray" (P.writeByteArray ba16 15 (1::Int) :: IO ())
+                    , bench "CAS MutableByteArray (along with a readByteArray)" (P.readByteArray ba16 15 >>= (\t-> casByteArrayInt ba16 15 t (2::Int)))
+                    , bench "write Mutable Unboxed Vector" $ (UMV.write umvvec16 15 2 :: IO ())
                     ]
                 , bgroup "creating" $
-                    [ bench "new MVector 8" $ (MVec.new 8 :: IO (MVec.IOVector ()))
-                    , bench "new MVector 32" $ (MVec.new 32 :: IO (MVec.IOVector ()))
-                    , bench "unsafeNew MVector 8" $ (MVec.unsafeNew 8 :: IO (MVec.IOVector ()))
-                    , bench "unsafeNew MVector 32" $ (MVec.unsafeNew 32 :: IO (MVec.IOVector ()))
-                    , bench "new MutableArray 8" $ (P.newArray 8 () :: IO (P.MutableArray (PrimState IO) ()))
-                    , bench "new MutableArray 32" $ (P.newArray 32 () :: IO (P.MutableArray (PrimState IO) ()))
+                    [ bench "new MVector 8 Ints" $ (MVec.new 8 :: IO (MVec.IOVector Int))
+                    , bench "new MVector 32 Ints" $ (MVec.new 32 :: IO (MVec.IOVector Int))
+                    , bench "unsafeNew MVector 8 Ints" $ (MVec.unsafeNew 8 :: IO (MVec.IOVector Int))
+                    , bench "unsafeNew MVector 32 Ints" $ (MVec.unsafeNew 32 :: IO (MVec.IOVector Int))
+                    , bench "new MutableArray 8 Ints" $ (P.newArray 8 0 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "new MutableArray 32 Ints" $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "new MutableByteArray 8 Ints" (P.newByteArray 8 :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new MutableByteArray 32 Ints" (P.newByteArray 32 :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new unboxed Mutable Vector 8 Ints" (UMV.new 8 :: IO (UMV.IOVector Int))
+                    , bench "new unboxed Mutable Vector 32 Ints" (UMV.new 32 :: IO (UMV.IOVector Int))
                     ]
                 ]
             ]
