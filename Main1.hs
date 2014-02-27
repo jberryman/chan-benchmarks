@@ -290,6 +290,7 @@ main = do
                     , bench "index 16th Primitiv Array" $ nf (P.indexArray iparr16) 15
 
                     , bench "readArrayElem for CAS (MutableArray)" $ nfIO (fmap peekTicket $ readArrayElem parr16 15 )
+                    , bench "readArray (MutableArray)" $ nfIO (P.readArray parr16 15 )
                     , bench "readByteArray (MutableByteArray, usable for CAS)" $ nfIO (P.readByteArray ba16 15 :: IO Int)
                     , bench "read Mutable Unboxed Vector" $ (UMV.read umvvec16 15 :: IO Int)
                     ]
@@ -307,6 +308,7 @@ main = do
                     , bench "unsafeNew MVector 32 Ints" $ (MVec.unsafeNew 32 :: IO (MVec.IOVector Int))
                     , bench "new MutableArray 8 Ints" $ (P.newArray 8 0 :: IO (P.MutableArray (PrimState IO) Int))
                     , bench "new MutableArray 32 Ints" $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "new MutableArray 32 Nothing :: Maybe Ints" $ (P.newArray 32 Nothing :: IO (P.MutableArray (PrimState IO) (Maybe Int)))
                     , bench "new MutableByteArray 8 Ints" (P.newByteArray 8 :: IO (P.MutableByteArray (PrimState IO)))
                     , bench "new MutableByteArray 32 Ints" (P.newByteArray 32 :: IO (P.MutableByteArray (PrimState IO)))
                     , bench "new unboxed Mutable Vector 8 Ints" (UMV.new 8 :: IO (UMV.IOVector Int))
