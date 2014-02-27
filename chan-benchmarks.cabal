@@ -20,7 +20,7 @@ cabal-version:       >=1.10
 executable bench-single
   main-is:           Main1.hs
   other-modules:     Benchmarks
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
                      , async
                      -- random number generation:
@@ -55,7 +55,7 @@ executable bench-single
 executable bench-multi
   main-is:           MainN.hs
   other-modules:     Benchmarks
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
                      , async
                      , criterion
@@ -81,7 +81,7 @@ executable bench-multi
 
 executable test-atomics
   main-is:           TestAtomics.hs
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
                      , async
                      , atomic-primops == 0.6
@@ -95,7 +95,7 @@ executable test-atomics
 executable experiment-mvar-fairness
   main-is:           MVarExperiment.hs
   other-modules:     Benchmarks
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
                      , async
                      -- random number generation:
@@ -113,7 +113,7 @@ executable experiment-mvar-fairness
 executable experiment-tvar-interleaving
   main-is:           TVarExperiment.hs
   other-modules:     Benchmarks
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
                      , async
                      -- random number generation:
@@ -131,7 +131,7 @@ executable experiment-tvar-interleaving
 executable retry-experiment
   main-is:           RetryExperiment.hs
   other-modules:     Benchmarks
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6
                      , stm
   
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
