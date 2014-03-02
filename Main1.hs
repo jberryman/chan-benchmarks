@@ -16,7 +16,7 @@ import Control.Concurrent.STM.TBQueue
 import Control.Concurrent.MVar
 import Data.IORef
 import Criterion.Main
-import Control.Exception(evaluate)
+import Control.Exception(evaluate,mask_)
 
 import qualified "chan-split-fast" Control.Concurrent.Chan.Split as S
 import qualified "split-channel" Control.Concurrent.Chan.Split as SC
@@ -58,7 +58,7 @@ main = do
 --let n = 2000000  -- original suggested value, bugs if exceeded
 
   mv <- newEmptyMVar -- This to be left empty after each test
-  mvFull <- newMVar undefined
+  mvFull <- newMVar '1'
   -- --
   -- mvWithFinalizer <- newEmptyMVar
   -- mkWeakMVar mvWithFinalizer $ return ()
@@ -69,9 +69,9 @@ main = do
   --     modifyMVar_ mvFinalizee (const $ return 'b')
   -- --
   tmv <- newEmptyTMVarIO 
-  tv <- newTVarIO undefined 
-  ior <- newIORef undefined
-  mutv <- newMutVar undefined
+  tv <- newTVarIO '1' 
+  ior <- newIORef '1'
+  mutv <- newMutVar '1'
 
   atomic_counter <- newCounter 0
 
@@ -210,6 +210,9 @@ main = do
                 [ bench "newIORef Char" $ (newIORef '0')
                 , bench "writeIORef" $ (writeIORef ior '1')
                 , bench "readIORef" $ (readIORef ior)
+                , bench "readIORef (w result forced)" $ nfIO (readIORef ior) -- what does this tell us w/r/t above?
+                , bench "readForCAS" $ (fmap peekTicket $ readForCAS ior)
+                , bench "readForCAS (w result forced)" $ nfIO (fmap peekTicket $ readForCAS ior)
                 , bench "modifyIORef' (i.e. readIORef + writeIORef)" (modifyIORef' ior $ const '2')
                 , bench "atomicModifyIORef' (i.e. (in GHC) strict atomicModifyMutVar)" $ (atomicModifyIORef' ior $ const ('3','3'))
                 , bench "atomicModifyIORef (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef ior $ const ('3','3'))
@@ -221,11 +224,16 @@ main = do
                 [ bench "newEmptyMVar" $ newEmptyMVar
                 , bench "newEmptyMVar + putMVar (i.e. newMVar Char)" (newEmptyMVar >>= \v->putMVar v '0')
                 , bench "putMVar + takeMVar" $ (putMVar mv '1' >> takeMVar mv)
-                , bench "modifyMVarMasked_ (i.e. takeMVar + putMVar + exception-handling)" $ (modifyMVarMasked_ mvFull (const $ return '2'))
+                , bench "modifyMVarMasked_ (i.e. mask + takeMVar + putMVar + exception-handling)" $ (modifyMVarMasked_ mvFull (const $ return '2'))
+                , bench "mask_ + takeMVar-and-mod + putMVar)" $ mask_ (takeMVar mvFull >>= (putMVar mvFull . const '2'))
                 , bench "newMVar + mkWeakMVar with finalizer" $ (newMVar '1' >>= flip mkWeakMVar (return ()))
                 -- These show no effect of a finalizer:
                 -- , bench "on MVar with finalizer: putMVar, takeMVar" $ (putMVar mvWithFinalizer '1' >> takeMVar mvWithFinalizer)
                 -- , bench "On target of an MVar finalizer: takeMVar, putMVar" $ (takeMVar mvFinalizee >>= putMVar mvFinalizee)
+#if MIN_VERSION_base(4,7,0)
+                , bench "tryReadMVar" $ tryReadMVar mvFull
+                , bench "tryReadMVar (w result forced)" $ nfIO $ tryReadMVar mvFull
+#endif
                 ]
 
             , bgroup "TVar" $
