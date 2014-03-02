@@ -26,7 +26,10 @@ import Control.Monad.Primitive(PrimState)
 import Data.Atomics.Counter
 import Data.Atomics
 
+#if MIN_VERSION_base(4,7,0)
+#else
 import qualified Data.Concurrent.Queue.MichaelScott as MS
+#endif
 
 import GHC.Conc
 
@@ -74,7 +77,10 @@ main = do
   fill_empty_tbqueue <- newTBQueueIO maxBound
   (fill_empty_fastI, fill_empty_fastO) <- S.newSplitChan
   (fill_empty_splitchannelI, fill_empty_splitchannelO) <- SC.new
+#if MIN_VERSION_base(4,7,0)
+#else
   fill_empty_lockfree <- MS.newQ
+#endif
 
   defaultMain $
         [ bgroup "Var primitives" $
@@ -352,6 +358,8 @@ main = do
                       , bench "contention: async 100 writers 100 readers" $ runtestSplitChannelAsync 100 100 n
                       ]
                 -- michael-scott queue implementation, using atomic-primops
+#if MIN_VERSION_base(4,7,0)
+#else
                 , bgroup "lockfree-queue" $
                       [ bench "async 1 writer 1 readers" $ runtestLockfreeQueueAsync 1 1 n
                       , bench ("async "++(show procs)++" writers") $ do
@@ -364,6 +372,7 @@ main = do
                           mapM_ (\v-> putMVar v ()) starts ; mapM_ (\v-> takeMVar v) dones
                       , bench "contention: async 100 writers 100 readers" $ runtestLockfreeQueueAsync 100 100 n
                       ]
+#endif
                 -- Chase / Lev work-stealing queue
                 -- NOTE: we can have at most 1 writer (pushL); not a general-purpose queue, so don't do more tests
                 , bgroup "chaselev-dequeue" $

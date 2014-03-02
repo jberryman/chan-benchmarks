@@ -38,7 +38,11 @@ import qualified Data.Vector.Mutable as MVec
 import System.Time(getClockTime)
 import Data.Time.Clock.POSIX
 
+-- Hack since these aren't currently working with ghc 7.8
+#if MIN_VERSION_base(4,7,0)
+#else
 import qualified Data.Concurrent.Queue.MichaelScott as MS
+#endif
 import qualified Data.Concurrent.Deque.ChaseLev as CL
 
 import Benchmarks
@@ -72,7 +76,10 @@ main = do
   atomic_counter <- newCounter 0
 
   -- to be left empty at emd of each test:
+#if MIN_VERSION_base(4,7,0)
+#else
   lockfreeQEmpty <- MS.newQ
+#endif
   chaselevQEmpty <- CL.newQ
   chanEmpty <- newChan
   tchanEmpty <- newTChanIO
@@ -112,7 +119,10 @@ main = do
                 , bench "TBQueue" (atomically (writeTBQueue tbqueueEmpty () >>  readTBQueue tbqueueEmpty))
                 , bench "chan-split-fast" (S.writeChan fastEmptyI () >> S.readChan fastEmptyO)
                 , bench "split-channel" (SC.send splitchannelEmptyI () >> SC.receive splitchannelEmptyO)
+#if MIN_VERSION_base(4,7,0)
+#else
                 , bench "lockfree-queue" (MS.pushL lockfreeQEmpty () >> msreadR lockfreeQEmpty)
+#endif
                 , bench "chaselev-dequeue" (CL.pushL chaselevQEmpty () >> clreadR chaselevQEmpty)
                 ]
             , bgroup ("Single-thread throughput with "++show n++" messages") $
@@ -149,10 +159,13 @@ main = do
                       [ bench "sequential write all then read all" $ runtestSplitChannel1 n
                       , bench "repeated write some, read some" $ runtestSplitChannel2 n
                       ]
+#if MIN_VERSION_base(4,7,0)
+#else
                 , bgroup "lockfree-queue" $
                       [ bench "sequential write all then read all" $ runtestLockfreeQueue1 n
                       , bench "repeated write some, read some" $ runtestLockfreeQueue2 n
                       ]
+#endif
                 , bgroup "chaselev-dequeue" $
                       [ bench "sequential write all then read all" $ runtestChaseLevQueue1 n
                       , bench "repeated write some, read some" $ runtestChaseLevQueue2 n
@@ -309,10 +322,13 @@ main = do
                     , bench "new MutableArray 8 Ints" $ (P.newArray 8 0 :: IO (P.MutableArray (PrimState IO) Int))
                     , bench "new MutableArray 32 Ints" $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))
                     , bench "new MutableArray 32 Nothing :: Maybe Ints" $ (P.newArray 32 Nothing :: IO (P.MutableArray (PrimState IO) (Maybe Int)))
-                    , bench "new MutableByteArray 8 Ints" (P.newByteArray 8 :: IO (P.MutableByteArray (PrimState IO)))
-                    , bench "new MutableByteArray 32 Ints" (P.newByteArray 32 :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new MutableByteArray 8 Ints" (P.newByteArray (8* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new MutableByteArray 32 Ints" (P.newByteArray (32* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new MutableByteArray 128 Ints" (P.newByteArray (128* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new set MutableByteArray 128 Ints" $ (P.newByteArray (128* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO))) >>= \a-> P.setByteArray a 0 128 (0 :: Int)
                     , bench "new unboxed Mutable Vector 8 Ints" (UMV.new 8 :: IO (UMV.IOVector Int))
                     , bench "new unboxed Mutable Vector 32 Ints" (UMV.new 32 :: IO (UMV.IOVector Int))
+                    , bench "new unboxed Mutable Vector 128 Ints" (UMV.new 128 :: IO (UMV.IOVector Int))
                     ]
                 ]
             ]

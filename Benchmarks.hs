@@ -25,7 +25,11 @@ import Control.Monad.Primitive(PrimState)
 
 import Data.Atomics
 
+-- Hack since these aren't currently working with ghc 7.8
+#if MIN_VERSION_base(4,7,0)
+#else
 import qualified Data.Concurrent.Queue.MichaelScott as MS
+#endif
 import qualified Data.Concurrent.Deque.ChaseLev as CL
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
@@ -57,6 +61,9 @@ runtestChanAsync writers readers n = do
   mapM_ wait rcvrs
 
 -- ----------
+-- Hack since these aren't currently working with ghc 7.8
+#if MIN_VERSION_base(4,7,0)
+#else
 -- from "lockfree-queue"
 runtestLockfreeQueue1, runtestLockfreeQueue2 :: Int -> IO ()
 runtestLockfreeQueue1 n = do
@@ -82,6 +89,7 @@ runtestLockfreeQueueAsync writers readers n = do
 -- a busy-blocking read:
 msreadR :: MS.LinkedQueue a -> IO a
 msreadR q = MS.tryPopR q >>= maybe (msreadR q) return
+#endif
 
 
 -- ----------

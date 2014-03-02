@@ -32,7 +32,6 @@ executable bench-single
             -- other chans:
                      , chan-split-fast
                      , split-channel
-                     , lockfree-queue == 0.2.3
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
                      , chaselev-deque
@@ -44,13 +43,16 @@ executable bench-single
                      -- time:
                      , old-time
                      , time
-
+  -- Since this doesn't support 7.8 yet
+  if impl(ghc < 7.8.0)
+    build-depends: lockfree-queue == 0.2.3
+                   
   -- Still testing the threaded runtime, but removing OS thread scheduling from
   -- the picture:
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N1
   ghc-options: -fforce-recomp
   default-language:    Haskell2010
-
+  default-extensions: CPP
 
 executable bench-multi
   main-is:           MainN.hs
@@ -64,10 +66,12 @@ executable bench-multi
             -- other chans:
                      , chan-split-fast
                      , split-channel
-                     , lockfree-queue == 0.2.3
               --TODO (other FIFO chans/queues with blocking read):
                    --, cml
                      , chaselev-deque
+  -- Since this doesn't support 7.8 yet
+  if impl(ghc < 7.8.0)
+    build-depends: lockfree-queue == 0.2.3
 
   -- We fix this to 2 cores, so that we can be a little less careful about how
   -- we write and interpret our tests.
@@ -76,6 +80,7 @@ executable bench-multi
   ghc-options: -O2  -rtsopts  -threaded -with-rtsopts=-N2
   ghc-options: -fforce-recomp
   default-language:    Haskell2010
+  default-extensions: CPP
 
 -- --------------
 
