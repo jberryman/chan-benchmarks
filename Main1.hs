@@ -234,6 +234,8 @@ main = do
                 , bench "tryReadMVar" $ tryReadMVar mvFull
                 , bench "tryReadMVar (w result forced)" $ nfIO $ tryReadMVar mvFull
 #endif
+                , bench "readMVar" $ readMVar mvFull
+                , bench "readMVar (w result forced)" $ nfIO $ readMVar mvFull
                 ]
 
             , bgroup "TVar" $
