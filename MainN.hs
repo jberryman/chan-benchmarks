@@ -7,6 +7,7 @@ import Control.Concurrent.Async
 import Control.Monad
 import System.Environment
 
+import qualified Data.Primitive as P
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
@@ -129,6 +130,9 @@ main = do
                         , bench "atomicModifyIORefCAS (atomic-primops)" $ mod_test (procs*perProc) $
                             (atomicModifyIORefCAS counter_ioref (\x-> (x+1,()) ) >> payload numPL)
 
+                        , bench "atomicModifyIORefCAS' (my CAS loop)" $ mod_test (procs*perProc) $
+                            (atomicModifyIORefCAS' counter_ioref (\x-> (x+1,()) ) >> payload numPL)
+
                         ]
 
                  in [ bgroup "1 thread per HEC, full contention" $
@@ -149,6 +153,9 @@ main = do
                         
                         , bench "atomicModifyIORefCAS (atomic-primops)" $ mod_test procs $
                             (atomicModifyIORefCAS counter_ioref (\x-> (x+1,()) ))
+                        
+                        , bench "atomicModifyIORefCAS' (my CAS loop)" $ mod_test procs $
+                            (atomicModifyIORefCAS' counter_ioref (\x-> (x+1,()) ))
                         
                         -- I want to compare these with the same results above;
                         -- see also TVarExperiment:
@@ -379,6 +386,30 @@ main = do
                       [ bench "async 1 writer 1 readers" $ runtestChaseLevQueueAsync_1_1 n
                       ]
                 ]
+            ]
+        , bgroup "Arrays misc" $
+            -- be sure to subtract "cost" of 2 forkIO's and context switch
+            [ bench "baseline" $
+                do x <- newEmptyMVar
+                   y <- newEmptyMVar
+                   forkIO $ (replicateM_ 500 $ return ()) >> putMVar x ()
+                   forkIO $ (replicateM_ 500 $ return ()) >> putMVar y ()
+                   takeMVar x
+                   takeMVar y
+            , bench "New 32-length MutableArrays x1000 across two threads" $
+                do x <- newEmptyMVar
+                   y <- newEmptyMVar
+                   forkIO $ (replicateM_ 500 $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))) >> putMVar x ()
+                   forkIO $ (replicateM_ 500 $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))) >> putMVar y ()
+                   takeMVar x
+                   takeMVar y
+            , bench "New MVar x1000 across two threads" $
+                do x <- newEmptyMVar
+                   y <- newEmptyMVar
+                   forkIO $ (replicateM_ 500 $ (newEmptyMVar :: IO (MVar Int))) >> putMVar x ()
+                   forkIO $ (replicateM_ 500 $ (newEmptyMVar :: IO (MVar Int))) >> putMVar y ()
+                   takeMVar x
+                   takeMVar y
             ]
         ]
   -- to make sure the counter is actually being incremented!:

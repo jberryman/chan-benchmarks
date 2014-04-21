@@ -38,6 +38,9 @@ import qualified Data.Vector.Mutable as MVec
 import System.Time(getClockTime)
 import Data.Time.Clock.POSIX
 
+import Data.Word
+import Data.Bits
+
 -- Hack since these aren't currently working with ghc 7.8
 #if MIN_VERSION_base(4,7,0)
 #else
@@ -100,6 +103,10 @@ main = do
   mvec16 <- V.thaw vec16 -- :: V.MVector (PrimState IO) Int
   parr8 <- P.newArray 8 (0::Int)
   parr16 <- P.newArray 16 (0::Int)
+  parr32 <- P.newArray 32 (0::Int)
+  parr128 <- P.newArray 128 (0::Int)
+  parr512 <- P.newArray 512 (0::Int)
+  parr32Justs <- P.newArray 32 (Just 0 :: Maybe Int)
   iparr8 <- ((P.newArray 8 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
   iparr16 <- ((P.newArray 16 (0::Int)) >>= P.unsafeFreezeArray) :: IO (P.Array Int)
 
@@ -198,8 +205,19 @@ main = do
 
         , bgroup "Var primitives" $
             [ bgroup "For scale" $ 
-                [ bench "mod" $ nf (2147483647 `mod`) (8 :: Int)
-                , bench "rem" $ nf (2147483647 `rem`) (8 :: Int)
+                [ bench "mod (Int)" $ nf (2147483647 `mod`) (8 :: Int)
+                , bench "rem (Int)" $ nf (2147483647 `rem`) (8 :: Int)
+                , bench "mod (Word)" $ nf ((2147483647::Word) `mod`) (8 :: Word)
+                , bench "rem (Word)" $ nf ((2147483647::Word) `rem`) (8 :: Word)
+                -- tricks since we only need powers of two: a `mod` 2^i = a .&. (2^i–1) 
+                , bench "AND modulo (Int)" $ nf (((2147483647::Int) .&.) . subtract 1) (8 :: Int)
+                , bench "AND modulo (Int) easier" $ nf (((2147483647::Int) .&.)) (7 :: Int)
+                , bench "AND modulo (Word)" $ nf (((2147483647::Word) .&.) . subtract 1) (8 :: Word)
+                
+                -- we might end up just using subtraction:
+                , bench "subtraction (Int)" $ nf (subtract 2147483640) (2147483647 :: Int)
+                -- ALL OF ABOVE IS STUPID SLOW; probably measuring overhead of function call, boxing/unboxing, etc.
+                , bench "subtraction on counter incr" $ nfIO $ fmap (subtract 2147483640) (incrCounter 1 atomic_counter)
                 ]
             , bgroup "atomic-primops (puts on safety goggles...)" $ 
                 [ bench "newCounter" $ newCounter 0
@@ -218,6 +236,7 @@ main = do
                 , bench "atomicModifyIORef (i.e. (in GHC) atomicModifyMutVar)" $ (atomicModifyIORef ior $ const ('3','3'))
                 
                 , bench "atomicModifyIORefCAS (i.e. atomic-primops CAS loop)" $ (atomicModifyIORefCAS ior $ const ('4','4'))
+                , bench "atomicModifyIORefCAS' (my CAS loop)" $ (atomicModifyIORefCAS' ior $ const ('4','4'))
 
                 ]
             , bgroup "MVar" $
@@ -323,19 +342,32 @@ main = do
                     , bench "write MutableByteArray" (P.writeByteArray ba16 15 (1::Int) :: IO ())
                     , bench "CAS MutableByteArray (along with a readByteArray)" (P.readByteArray ba16 15 >>= (\t-> casByteArrayInt ba16 15 t (2::Int)))
                     , bench "write Mutable Unboxed Vector" $ (UMV.write umvvec16 15 2 :: IO ())
+                    , bench "fetchAddByteArrayInt" $ fetchAddByteArrayInt ba16 14 1
+                    , bench "fetchAddByteArrayInt w result forced" $ nfIO $ fetchAddByteArrayInt ba16 14 1
                     ]
                 , bgroup "creating" $
                     [ bench "new MVector 8 Ints" $ (MVec.new 8 :: IO (MVec.IOVector Int))
                     , bench "new MVector 32 Ints" $ (MVec.new 32 :: IO (MVec.IOVector Int))
                     , bench "unsafeNew MVector 8 Ints" $ (MVec.unsafeNew 8 :: IO (MVec.IOVector Int))
                     , bench "unsafeNew MVector 32 Ints" $ (MVec.unsafeNew 32 :: IO (MVec.IOVector Int))
+
                     , bench "new MutableArray 8 Ints" $ (P.newArray 8 0 :: IO (P.MutableArray (PrimState IO) Int))
                     , bench "new MutableArray 32 Ints" $ (P.newArray 32 0 :: IO (P.MutableArray (PrimState IO) Int))
                     , bench "new MutableArray 32 Nothing :: Maybe Ints" $ (P.newArray 32 Nothing :: IO (P.MutableArray (PrimState IO) (Maybe Int)))
+                    , bench "cloned MutableArray 8 Ints" $ (P.cloneMutableArray parr8 0 8 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "cloned MutableArray 32 Ints" $ (P.cloneMutableArray parr32 0 32 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "cloned MutableArray 128 Ints" $ (P.cloneMutableArray parr128 0 128 :: IO (P.MutableArray (PrimState IO) Int))
+                    , bench "cloned MutableArray 512 Ints" $ (P.cloneMutableArray parr512 0 512 :: IO (P.MutableArray (PrimState IO) Int))
+
                     , bench "new MutableByteArray 8 Ints" (P.newByteArray (8* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
                     , bench "new MutableByteArray 32 Ints" (P.newByteArray (32* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new set MutableByteArray 32 Ints" $ (P.newByteArray (32* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO))) >>= \a-> P.setByteArray a 0 32 (0 :: Int)
                     , bench "new MutableByteArray 128 Ints" (P.newByteArray (128* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
                     , bench "new set MutableByteArray 128 Ints" $ (P.newByteArray (128* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO))) >>= \a-> P.setByteArray a 0 128 (0 :: Int)
+                    , bench "new MutableByteArray 512 Ints" (P.newByteArray (512* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new set MutableByteArray 512 Ints" $ (P.newByteArray (512* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO))) >>= \a-> P.setByteArray a 0 512 (0 :: Int)
+                    , bench "new MutableByteArray 2048 Ints" (P.newByteArray (2048* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
+                    , bench "new MutableByteArray 8192 Ints" (P.newByteArray (8192* P.sizeOf (0 :: Int)) :: IO (P.MutableByteArray (PrimState IO)))
                     , bench "new unboxed Mutable Vector 8 Ints" (UMV.new 8 :: IO (UMV.IOVector Int))
                     , bench "new unboxed Mutable Vector 32 Ints" (UMV.new 32 :: IO (UMV.IOVector Int))
                     , bench "new unboxed Mutable Vector 128 Ints" (UMV.new 128 :: IO (UMV.IOVector Int))

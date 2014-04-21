@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE BangPatterns #-}
 module Benchmarks
     where 
 
@@ -31,6 +32,26 @@ import Data.Atomics
 import qualified Data.Concurrent.Queue.MichaelScott as MS
 #endif
 import qualified Data.Concurrent.Deque.ChaseLev as CL
+
+
+-- -----------------------------------------------------------
+atomicModifyIORefCAS' :: IORef a      -- ^ Mutable location to modify
+                     -> (a -> (a,b)) -- ^ Computation runs one or more times (speculation)
+                     -> IO b
+atomicModifyIORefCAS' ref fn = do
+   -- TODO: Should handle contention in a better way...
+   tick <- readForCAS ref
+   loop tick 
+  where 
+   loop old = do 
+     let !(~new,~result) = fn $ peekTicket old
+     (b,tick) <- casIORef ref old new
+     if b 
+      then new `seq` result `seq` return result
+      else loop tick
+
+
+-- -----------------------------------------------------------
 
 -- These tests initially taken from stm/bench/chanbench.hs, ported to
 -- criterion, with some additions, and have now changed quite a bit.
